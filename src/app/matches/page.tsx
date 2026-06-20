@@ -3,6 +3,7 @@ import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
+import { stageLabel } from "@/lib/betting/stageMapping";
 import { setMatchExactScoreBetAction, setMatchOutcomeBetAction } from "@/app/_actions/bets";
 
 function formatDateTime(iso: string) {
@@ -117,7 +118,7 @@ export default async function MatchesPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-sm text-white/70">
-                      {m.stage}
+                      {stageLabel(m.stage)}
                     </div>
                     <div className="mt-1 text-lg font-semibold">
                       {m.home_team_name} — {m.away_team_name}

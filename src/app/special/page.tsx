@@ -52,15 +52,30 @@ export default async function SpecialPage() {
     .eq("tournament_id", tournamentId)
     .maybeSingle();
 
-  const { data: matchTeams } = await supabaseAdmin
-    .from("matches")
-    .select("home_team_name,away_team_name")
+  const { data: tournamentTeams } = await supabaseAdmin
+    .from("tournament_teams")
+    .select("team_name")
     .eq("tournament_id", tournamentId);
 
   const options = new Set<string>();
-  for (const r of matchTeams ?? []) {
-    if (r.home_team_name) options.add(r.home_team_name);
-    if (r.away_team_name) options.add(r.away_team_name);
+  for (const r of tournamentTeams ?? []) {
+    if (r.team_name && r.team_name !== "Уточняется") options.add(r.team_name);
+  }
+
+  if (!options.size) {
+    const { data: matchTeams } = await supabaseAdmin
+      .from("matches")
+      .select("home_team_name,away_team_name")
+      .eq("tournament_id", tournamentId);
+
+    for (const r of matchTeams ?? []) {
+      if (r.home_team_name && r.home_team_name !== "Уточняется") {
+        options.add(r.home_team_name);
+      }
+      if (r.away_team_name && r.away_team_name !== "Уточняется") {
+        options.add(r.away_team_name);
+      }
+    }
   }
 
   const teamList = Array.from(options).sort((a, b) => a.localeCompare(b, "ru"));
@@ -71,6 +86,11 @@ export default async function SpecialPage() {
         <h1 className="text-2xl font-bold tracking-tight">Спецставки</h1>
         <p className="mt-2 text-white/70">
           Победителя ЧМ и 3-е место можно выбрать до старта 1/16.
+          {!teamList.length ? (
+            <span className="block mt-1 text-orange-400">
+              Список стран появится после синхронизации в админке.
+            </span>
+          ) : null}
         </p>
       </div>
 

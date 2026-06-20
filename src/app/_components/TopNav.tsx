@@ -27,6 +27,9 @@ export function TopNav({ team }: { team: TeamSession | null }) {
               <Link href="/special" className="hover:text-orange-500">
                 Спецставки
               </Link>
+              <Link href="/my-bets" className="hover:text-orange-500">
+                Мои ставки
+              </Link>
               <Link href="/leaderboard" className="hover:text-orange-500">
                 Лидерборд
               </Link>

@@ -1,8 +1,9 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { fetchWorldCupMatchesFromFootballData } from "@/lib/football/footballDataClient";
+import { fetchWorldCupMatchesFromFootballData, fetchWorldCupTeamsFromFootballData } from "@/lib/football/footballDataClient";
 import { MIN_PLAYOFF_STAGE_RANK, STAGE_RANK } from "@/lib/betting/stages";
+import { stageKeyFromFootballData } from "@/lib/betting/stageMapping";
 import { awardChampionAndThirdPlace, awardPointsForPlayedMatch } from "@/lib/sync/awardPoints";
 
 type FootballMatch = {
@@ -15,9 +16,9 @@ type FootballMatch = {
   homeTeam?: { name?: string | null; teamName?: string | null };
   awayTeam?: { name?: string | null; teamName?: string | null };
   score?: {
-    fullTime?: { homeTeam?: unknown; awayTeam?: unknown };
-    fulltime?: { homeTeam?: unknown; awayTeam?: unknown };
-    penalties?: { homeTeam?: unknown; awayTeam?: unknown };
+    fullTime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
+    fulltime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
+    penalties?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
   };
 };
 
@@ -46,28 +47,9 @@ function extractNumber(maybe: unknown): number | null {
   return null;
 }
 
-function stageKeyFromFootballData(stageRaw: string | null | undefined) {
-  const s = (stageRaw ?? "").toLowerCase();
-
-  if (s.includes("round of 32") || s === "r32" || s.includes("1/16")) {
-    return { key: "R32", rank: STAGE_RANK.R32 };
-  }
-  if (s.includes("round of 16") || s === "r16" || s.includes("1/8")) {
-    return { key: "R16", rank: STAGE_RANK.R16 };
-  }
-  if (s.includes("quarter")) {
-    return { key: "QF", rank: STAGE_RANK.QF };
-  }
-  if (s.includes("semi")) {
-    return { key: "SF", rank: STAGE_RANK.SF };
-  }
-  if (s.includes("third")) {
-    return { key: "THIRD_PLACE", rank: STAGE_RANK.THIRD_PLACE };
-  }
-  if (s.includes("final")) {
-    return { key: "FINAL", rank: STAGE_RANK.FINAL };
-  }
-  return { key: "UNKNOWN", rank: 0 };
+function isPlayedStatus(statusRaw: string) {
+  const s = statusRaw.toUpperCase();
+  return s === "FINISHED" || s === "AWARDED";
 }
 
 function mapFootballMatchToDbMatch(args: {
@@ -82,24 +64,35 @@ function mapFootballMatchToDbMatch(args: {
   const kickoffAt = m.utcDate ?? m.datetime ?? null;
   if (!kickoffAt) return null;
 
-  const homeTeamName = m.homeTeam?.name ?? m.homeTeam?.teamName ?? null;
-  const awayTeamName = m.awayTeam?.name ?? m.awayTeam?.teamName ?? null;
-  if (!homeTeamName || !awayTeamName) return null;
+  const homeTeamName =
+    m.homeTeam?.name?.trim() || m.homeTeam?.teamName?.trim() || "Уточняется";
+  const awayTeamName =
+    m.awayTeam?.name?.trim() || m.awayTeam?.teamName?.trim() || "Уточняется";
 
-  const statusRaw = String(m.status ?? "").toUpperCase();
-  const played =
-    statusRaw === "FINISHED" ||
-    statusRaw === "PLAYED" ||
-    statusRaw === "POSTPONED" ||
-    statusRaw === "AWARDED";
+  const statusRaw = String(m.status ?? "");
+  const played = isPlayedStatus(statusRaw);
 
   const score = m.score ?? {};
 
-  const homeGoals = extractNumber(score?.fullTime?.homeTeam ?? score?.fulltime?.homeTeam);
-  const awayGoals = extractNumber(score?.fullTime?.awayTeam ?? score?.fulltime?.awayTeam);
+  const homeGoals = extractNumber(
+    score?.fullTime?.home ??
+      score?.fullTime?.homeTeam ??
+      score?.fulltime?.home ??
+      score?.fulltime?.homeTeam
+  );
+  const awayGoals = extractNumber(
+    score?.fullTime?.away ??
+      score?.fullTime?.awayTeam ??
+      score?.fulltime?.away ??
+      score?.fulltime?.awayTeam
+  );
 
-  const homePenalties = extractNumber(score?.penalties?.homeTeam);
-  const awayPenalties = extractNumber(score?.penalties?.awayTeam);
+  const homePenalties = extractNumber(
+    score?.penalties?.home ?? score?.penalties?.homeTeam
+  );
+  const awayPenalties = extractNumber(
+    score?.penalties?.away ?? score?.penalties?.awayTeam
+  );
 
   return {
     tournament_id: tournamentId,
@@ -117,7 +110,15 @@ function mapFootballMatchToDbMatch(args: {
   };
 }
 
-export async function syncWorldCupMatches() {
+export type SyncResult = {
+  fetched: number;
+  upserted: number;
+  skipped: number;
+  played: number;
+  pointsAwarded: number;
+};
+
+export async function syncWorldCupMatches(): Promise<SyncResult> {
   const tournamentId = await getActiveTournament();
   const footballMatches = await fetchWorldCupMatchesFromFootballData();
 
@@ -129,7 +130,15 @@ export async function syncWorldCupMatches() {
     payloads.push(mapped);
   }
 
-  if (!payloads.length) return { upserted: 0 };
+  if (!payloads.length) {
+    return {
+      fetched: footballMatches.length,
+      upserted: 0,
+      skipped: footballMatches.length,
+      played: 0,
+      pointsAwarded: 0,
+    };
+  }
 
   // Upsert matches
   const { error: upsertError } = await supabaseAdmin
@@ -137,6 +146,24 @@ export async function syncWorldCupMatches() {
     .upsert(payloads, { onConflict: "tournament_id,external_id" });
 
   if (upsertError) throw upsertError;
+
+  // Участники турнира (для спецставок)
+  try {
+    const apiTeams = await fetchWorldCupTeamsFromFootballData();
+    if (apiTeams.length) {
+      const { error: teamsError } = await supabaseAdmin
+        .from("tournament_teams")
+        .upsert(
+          apiTeams.map((name) => ({ tournament_id: tournamentId, team_name: name })),
+          { onConflict: "tournament_id,team_name" }
+        );
+      if (teamsError) {
+        console.warn("tournament_teams sync skipped:", teamsError.message);
+      }
+    }
+  } catch (e) {
+    console.warn("teams fetch failed:", e);
+  }
 
   // Update lock timestamps for winner/3rd place (earliest R32 kickoff)
   const { data: r32Rows } = await supabaseAdmin
@@ -173,11 +200,16 @@ export async function syncWorldCupMatches() {
     .gte("stage_rank", MIN_PLAYOFF_STAGE_RANK)
     .eq("status", "PLAYED");
 
+  let pointsAwarded = 0;
+
   for (const match of playedMatches ?? []) {
+    const before = await countLedgerEntries(tournamentId);
     await awardPointsForPlayedMatch({
       tournamentId,
       match,
     });
+    const after = await countLedgerEntries(tournamentId);
+    pointsAwarded += after - before;
   }
 
   // Champion + third place bets (based on FINAL and THIRD_PLACE matches)
@@ -230,6 +262,20 @@ export async function syncWorldCupMatches() {
     thirdPlaceName: winnerNameFromMatch(thirdMatch),
   });
 
-  return { upserted: payloads.length };
+  return {
+    fetched: footballMatches.length,
+    upserted: payloads.length,
+    skipped: footballMatches.length - payloads.length,
+    played: playedMatches?.length ?? 0,
+    pointsAwarded,
+  };
+}
+
+async function countLedgerEntries(tournamentId: string) {
+  const { count } = await supabaseAdmin
+    .from("team_points_ledger")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId);
+  return count ?? 0;
 }
 

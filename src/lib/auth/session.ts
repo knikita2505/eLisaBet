@@ -1,6 +1,7 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -66,7 +67,7 @@ export async function getSessionTeam() {
 
 export async function requireSessionTeam() {
   const team = await getSessionTeam();
-  if (!team) throw new Error("Unauthorized");
+  if (!team) redirect("/login");
   return team;
 }
 
