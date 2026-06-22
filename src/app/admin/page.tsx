@@ -6,8 +6,8 @@ import { getActiveTournament } from "@/lib/db/tournament";
 import {
   createTeamAction,
   deleteTeamAction,
+  recalculatePointsAction,
   syncWorldCupAction,
-  updateMatchResultAction,
   updateTeamNameAction,
 } from "@/app/_actions/admin";
 
@@ -50,25 +50,38 @@ export default async function AdminPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Админ</h1>
           <p className="mt-2 text-white/70">
-            Синхронизация, команды и ручная правка результатов.
+            Синхронизация, команды и управление турниром.
           </p>
         </div>
-        <Link
-          href="/admin/bets"
-          className="rounded-lg border border-orange-500/50 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10"
-        >
-          Ставки всех команд →
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/results"
+            className="rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white/90 hover:bg-white/10"
+          >
+            Результаты матчей →
+          </Link>
+          <Link
+            href="/admin/bets"
+            className="rounded-lg border border-orange-500/50 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10"
+          >
+            Ставки всех команд →
+          </Link>
+        </div>
       </div>
 
-      {params.ok ? (
+      {params.synced ? (
         <div className="rounded-lg border border-green-400/40 bg-green-400/10 p-3 text-sm text-green-100">
-          Синхронизация: загружено {params.fetched ?? "?"}, сохранено{" "}
-          {params.upserted ?? "?"}, сыграно {params.played ?? "?"}, новых
+          Матчи синхронизированы: загружено {params.fetched ?? "?"}, сохранено{" "}
+          {params.upserted ?? "?"}.
+        </div>
+      ) : null}
+      {params.recalculated ? (
+        <div className="rounded-lg border border-green-400/40 bg-green-400/10 p-3 text-sm text-green-100">
+          Очки пересчитаны: сыграно матчей {params.played ?? "?"}, новых
           начислений {params.points ?? "?"}.
         </div>
       ) : null}
@@ -88,11 +101,6 @@ export default async function AdminPage({
           Команда удалена.
         </div>
       ) : null}
-      {params.updated ? (
-        <div className="rounded-lg border border-green-400/40 bg-green-400/10 p-3 text-sm text-green-100">
-          Результат матча обновлён.
-        </div>
-      ) : null}
       {params.error ? (
         <div className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-100">
           {decodeURIComponent(params.error)}
@@ -109,14 +117,28 @@ export default async function AdminPage({
             ? formatDateTime(tournament.winner_bet_locked_at)
             : "—"}
         </div>
-        <form action={syncWorldCupAction} className="mt-4">
-          <button
-            type="submit"
-            className="rounded-lg bg-orange-500 px-4 py-2 font-semibold text-[#0f2744] hover:bg-orange-400"
-          >
-            Синхронизировать матчи и пересчитать очки
-          </button>
-        </form>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <form action={syncWorldCupAction}>
+            <button
+              type="submit"
+              className="rounded-lg bg-orange-500 px-4 py-2 font-semibold text-[#0f2744] hover:bg-orange-400"
+            >
+              Синхронизировать матчи
+            </button>
+          </form>
+          <form action={recalculatePointsAction}>
+            <button
+              type="submit"
+              className="rounded-lg border border-orange-500/50 px-4 py-2 font-semibold text-orange-400 hover:bg-orange-500/10"
+            >
+              Пересчитать очки
+            </button>
+          </form>
+        </div>
+        <p className="mt-3 text-xs text-white/50">
+          Синхронизация загружает данные из football-data.org. Пересчёт начисляет
+          очки по текущим результатам в базе.
+        </p>
       </section>
 
       <section className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -190,80 +212,6 @@ export default async function AdminPage({
           ))}
         </div>
       </section>
-
-      <AdminMatchResults tournamentId={tournamentId} />
     </div>
-  );
-}
-
-async function AdminMatchResults({ tournamentId }: { tournamentId: string }) {
-  const { MIN_PLAYOFF_STAGE_RANK } = await import("@/lib/betting/stages");
-  const { stageLabel } = await import("@/lib/betting/stageMapping");
-
-  const { data: matches } = await supabaseAdmin
-    .from("matches")
-    .select(
-      "id,stage,kickoff_at,status,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
-    )
-    .eq("tournament_id", tournamentId)
-    .gte("stage_rank", MIN_PLAYOFF_STAGE_RANK)
-    .order("kickoff_at", { ascending: true });
-
-  return (
-    <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <h2 className="text-lg font-semibold">Ручная правка результатов</h2>
-      <p className="mt-1 text-sm text-white/60">
-        Счёт на табло (голы в основное время).
-      </p>
-
-      <div className="mt-4 flex flex-col gap-4">
-        {(matches ?? []).map((m) => (
-          <form
-            key={m.id}
-            action={updateMatchResultAction}
-            className="rounded-lg border border-white/10 bg-[#0f2744]/40 p-3"
-          >
-            <input type="hidden" name="matchId" value={m.id} />
-            <div className="text-sm text-white/70">{stageLabel(m.stage)}</div>
-            <div className="font-semibold">
-              {m.home_team_name} — {m.away_team_name}
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2 max-w-xs">
-              <label className="text-xs text-white/70">
-                {m.home_team_name}
-                <input
-                  name="homeGoals"
-                  type="number"
-                  min={0}
-                  defaultValue={m.home_goals ?? 0}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-[#0f2744] px-2 py-1"
-                />
-              </label>
-              <label className="text-xs text-white/70">
-                {m.away_team_name}
-                <input
-                  name="awayGoals"
-                  type="number"
-                  min={0}
-                  defaultValue={m.away_goals ?? 0}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-[#0f2744] px-2 py-1"
-                />
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              className="mt-3 rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-[#0f2744]"
-            >
-              Сохранить результат
-            </button>
-          </form>
-        ))}
-        {!matches?.length ? (
-          <p className="text-sm text-white/60">Нет матчей — запустите синхронизацию.</p>
-        ) : null}
-      </div>
-    </section>
   );
 }

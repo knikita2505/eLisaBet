@@ -6,9 +6,16 @@ import {
 } from "@/lib/football/footballDataClient";
 import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
 import { stageKeyFromFootballData } from "@/lib/betting/stageMapping";
-import { finalizeTournamentSync } from "@/lib/sync/finalizeSync";
+import {
+  afterMatchImport,
+  recalculateTournamentPoints,
+} from "@/lib/sync/finalizeSync";
 import { upsertMatchesWithDedup } from "@/lib/sync/matchUpsert";
-import type { MatchUpsertPayload, SyncResult } from "@/lib/sync/types";
+import type {
+  MatchUpsertPayload,
+  RecalculateResult,
+  SyncResult,
+} from "@/lib/sync/types";
 
 type FootballMatch = {
   id: number | string;
@@ -97,9 +104,9 @@ function mapFootballMatchToDbMatch(args: {
   };
 }
 
-export type { SyncResult };
+export type { SyncResult, RecalculateResult };
 
-export async function syncWorldCupMatches(): Promise<SyncResult> {
+export async function importWorldCupMatches(): Promise<SyncResult> {
   const tournamentId = await getActiveTournament();
   const footballMatches = await fetchWorldCupMatchesFromFootballData();
 
@@ -113,11 +120,12 @@ export async function syncWorldCupMatches(): Promise<SyncResult> {
   }
 
   if (!payloads.length) {
-    return finalizeTournamentSync({
+    await afterMatchImport({});
+    return {
       fetched: footballMatches.length,
       upserted: 0,
       skipped: footballMatches.length,
-    });
+    };
   }
 
   const upserted = await upsertMatchesWithDedup(payloads);
@@ -129,10 +137,20 @@ export async function syncWorldCupMatches(): Promise<SyncResult> {
     console.warn("teams fetch failed:", e);
   }
 
-  return finalizeTournamentSync({
+  await afterMatchImport({ tournamentTeams });
+
+  return {
     fetched: footballMatches.length,
     upserted,
     skipped: footballMatches.length - payloads.length,
-    tournamentTeams,
-  });
+  };
+}
+
+/** Импорт матчей + пересчёт очков — для cron. */
+export async function syncWorldCupMatches(): Promise<
+  SyncResult & RecalculateResult
+> {
+  const sync = await importWorldCupMatches();
+  const points = await recalculateTournamentPoints();
+  return { ...sync, ...points };
 }

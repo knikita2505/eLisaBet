@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { randomBytes } from "crypto";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { syncWorldCupMatches } from "@/lib/sync/syncWorldCup";
+import { importWorldCupMatches } from "@/lib/sync/syncWorldCup";
+import { recalculateTournamentPoints } from "@/lib/sync/finalizeSync";
 import { awardPointsForPlayedMatch } from "@/lib/sync/awardPoints";
 import { getActiveTournament } from "@/lib/db/tournament";
 
@@ -20,16 +21,33 @@ export async function syncWorldCupAction() {
 
   let result;
   try {
-    result = await syncWorldCupMatches();
+    result = await importWorldCupMatches();
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Ошибка синхронизации";
     redirect(`/admin?error=${encodeURIComponent(message)}`);
   }
 
   const q = new URLSearchParams({
-    ok: "1",
+    synced: "1",
     upserted: String(result.upserted),
     fetched: String(result.fetched),
+  });
+  redirect(`/admin?${q.toString()}`);
+}
+
+export async function recalculatePointsAction() {
+  await requireAdmin();
+
+  let result;
+  try {
+    result = await recalculateTournamentPoints();
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Ошибка пересчёта";
+    redirect(`/admin?error=${encodeURIComponent(message)}`);
+  }
+
+  const q = new URLSearchParams({
+    recalculated: "1",
     played: String(result.played),
     points: String(result.pointsAwarded),
   });
@@ -116,7 +134,9 @@ export async function updateMatchResultAction(formData: FormData) {
   await requireAdmin();
 
   const matchId = formData.get("matchId");
-  if (typeof matchId !== "string" || !matchId) redirect("/admin?error=invalid");
+  if (typeof matchId !== "string" || !matchId) {
+    redirect("/admin/results?error=invalid");
+  }
 
   const homeGoals = Number(formData.get("homeGoals"));
   const awayGoals = Number(formData.get("awayGoals"));
@@ -133,7 +153,7 @@ export async function updateMatchResultAction(formData: FormData) {
     .eq("id", matchId);
 
   if (error) {
-    redirect(`/admin?error=${encodeURIComponent(error.message)}`);
+    redirect(`/admin/results?error=${encodeURIComponent(error.message)}`);
   }
 
   const tournamentId = await getActiveTournament();
@@ -149,7 +169,7 @@ export async function updateMatchResultAction(formData: FormData) {
     await awardPointsForPlayedMatch({ tournamentId, match });
   }
 
-  redirect("/admin?updated=1");
+  redirect("/admin/results?updated=1");
 }
 
 const BET_TABLES = {

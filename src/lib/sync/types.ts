@@ -17,6 +17,9 @@ export type SyncResult = {
   fetched: number;
   upserted: number;
   skipped: number;
+};
+
+export type RecalculateResult = {
   played: number;
   pointsAwarded: number;
 };

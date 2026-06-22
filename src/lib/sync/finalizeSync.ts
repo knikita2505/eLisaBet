@@ -2,8 +2,11 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { MIN_PLAYOFF_STAGE_RANK, STAGE_RANK } from "@/lib/betting/stages";
-import { awardChampionAndThirdPlace, awardPointsForPlayedMatch } from "@/lib/sync/awardPoints";
-import type { SyncResult } from "@/lib/sync/types";
+import {
+  awardChampionAndThirdPlace,
+  awardPointsForPlayedMatch,
+} from "@/lib/sync/awardPoints";
+import type { RecalculateResult } from "@/lib/sync/types";
 
 async function countLedgerEntries(tournamentId: string) {
   const { count } = await supabaseAdmin
@@ -35,12 +38,9 @@ function winnerNameFromMatch(match: MatchForWinner | null) {
   return hp > ap ? match.home_team_name : match.away_team_name;
 }
 
-export async function finalizeTournamentSync(args: {
-  fetched: number;
-  upserted: number;
-  skipped: number;
+export async function afterMatchImport(args: {
   tournamentTeams?: string[];
-}): Promise<SyncResult> {
+}) {
   const tournamentId = await getActiveTournament();
 
   if (args.tournamentTeams?.length) {
@@ -85,6 +85,10 @@ export async function finalizeTournamentSync(args: {
       })
       .eq("id", tournamentId);
   }
+}
+
+export async function recalculateTournamentPoints(): Promise<RecalculateResult> {
+  const tournamentId = await getActiveTournament();
 
   const { data: playedMatches } = await supabaseAdmin
     .from("matches")
@@ -124,16 +128,16 @@ export async function finalizeTournamentSync(args: {
     .eq("status", "PLAYED")
     .maybeSingle();
 
+  const beforeSpecial = await countLedgerEntries(tournamentId);
   await awardChampionAndThirdPlace({
     tournamentId,
     championName: winnerNameFromMatch(finalMatch),
     thirdPlaceName: winnerNameFromMatch(thirdMatch),
   });
+  const afterSpecial = await countLedgerEntries(tournamentId);
+  pointsAwarded += afterSpecial - beforeSpecial;
 
   return {
-    fetched: args.fetched,
-    upserted: args.upserted,
-    skipped: args.skipped,
     played: playedMatches?.length ?? 0,
     pointsAwarded,
   };
