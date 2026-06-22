@@ -213,7 +213,7 @@ async function AdminMatchResults({ tournamentId }: { tournamentId: string }) {
     <section className="rounded-xl border border-white/10 bg-white/5 p-4">
       <h2 className="text-lg font-semibold">Ручная правка результатов</h2>
       <p className="mt-1 text-sm text-white/60">
-        Счёт на табло + пенальти (только для определения победителя при ничьей).
+        Счёт на табло (голы в основное время).
       </p>
 
       <div className="mt-4 flex flex-col gap-4">
@@ -229,7 +229,7 @@ async function AdminMatchResults({ tournamentId }: { tournamentId: string }) {
               {m.home_team_name} — {m.away_team_name}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2 max-w-xs">
               <label className="text-xs text-white/70">
                 {m.home_team_name}
                 <input
@@ -247,26 +247,6 @@ async function AdminMatchResults({ tournamentId }: { tournamentId: string }) {
                   type="number"
                   min={0}
                   defaultValue={m.away_goals ?? 0}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-[#0f2744] px-2 py-1"
-                />
-              </label>
-              <label className="text-xs text-white/70">
-                Пен. {m.home_team_name}
-                <input
-                  name="homePenalties"
-                  type="number"
-                  min={0}
-                  defaultValue={m.home_penalties ?? ""}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-[#0f2744] px-2 py-1"
-                />
-              </label>
-              <label className="text-xs text-white/70">
-                Пен. {m.away_team_name}
-                <input
-                  name="awayPenalties"
-                  type="number"
-                  min={0}
-                  defaultValue={m.away_penalties ?? ""}
                   className="mt-1 w-full rounded-md border border-white/10 bg-[#0f2744] px-2 py-1"
                 />
               </label>

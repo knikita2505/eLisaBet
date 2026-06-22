@@ -120,17 +120,6 @@ export async function updateMatchResultAction(formData: FormData) {
 
   const homeGoals = Number(formData.get("homeGoals"));
   const awayGoals = Number(formData.get("awayGoals"));
-  const homePenaltiesRaw = formData.get("homePenalties");
-  const awayPenaltiesRaw = formData.get("awayPenalties");
-
-  const homePenalties =
-    typeof homePenaltiesRaw === "string" && homePenaltiesRaw !== ""
-      ? Number(homePenaltiesRaw)
-      : null;
-  const awayPenalties =
-    typeof awayPenaltiesRaw === "string" && awayPenaltiesRaw !== ""
-      ? Number(awayPenaltiesRaw)
-      : null;
 
   const { error } = await supabaseAdmin
     .from("matches")
@@ -138,8 +127,8 @@ export async function updateMatchResultAction(formData: FormData) {
       status: "PLAYED",
       home_goals: homeGoals,
       away_goals: awayGoals,
-      home_penalties: homePenalties,
-      away_penalties: awayPenalties,
+      home_penalties: null,
+      away_penalties: null,
     })
     .eq("id", matchId);
 
@@ -161,4 +150,48 @@ export async function updateMatchResultAction(formData: FormData) {
   }
 
   redirect("/admin?updated=1");
+}
+
+const BET_TABLES = {
+  match_outcome: "bets_outcome",
+  match_exact_score: "bets_exact_score",
+  champion: "bets_champion",
+  third_place: "bets_third_place",
+} as const;
+
+type BetType = keyof typeof BET_TABLES;
+
+export async function deleteBetAction(formData: FormData) {
+  await requireAdmin();
+
+  const betType = formData.get("betType");
+  const betId = formData.get("betId");
+
+  if (
+    typeof betType !== "string" ||
+    typeof betId !== "string" ||
+    !betId ||
+    !(betType in BET_TABLES)
+  ) {
+    redirect("/admin/bets?error=invalid");
+  }
+
+  const typedBetType = betType as BetType;
+
+  await supabaseAdmin
+    .from("team_points_ledger")
+    .delete()
+    .eq("bet_type", typedBetType)
+    .eq("bet_id", betId);
+
+  const { error } = await supabaseAdmin
+    .from(BET_TABLES[typedBetType])
+    .delete()
+    .eq("id", betId);
+
+  if (error) {
+    redirect(`/admin/bets?error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect("/admin/bets?deleted=1");
 }
