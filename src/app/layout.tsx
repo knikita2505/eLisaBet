@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getSessionTeam } from "@/lib/auth/session";
 import { TopNav } from "./_components/TopNav";
+import { SportsBackground } from "./_components/SportsBackground";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,11 +32,14 @@ export default async function RootLayout({
       lang="ru"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#0f2744] text-white">
-        <TopNav team={team} />
-        <main className="w-full max-w-5xl mx-auto px-4 py-6">
-          {children}
-        </main>
+      <body className="relative flex min-h-full flex-col text-white">
+        <SportsBackground />
+        <div className="relative z-10 flex min-h-full flex-col">
+          <TopNav team={team} />
+          <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   );

@@ -16,6 +16,7 @@
 - `bets_champion`
 - `bets_third_place`
 - `team_points_ledger`
+- `tournament_teams` (участники ЧМ для спецставок)
 
 ## 3) Создайте турнир
 Выполните (замените при необходимости):
@@ -36,6 +37,15 @@ on conflict (code) do nothing;
 ```
 
 Замените `ADMIN_CODE` на реальный уникальный код и запомните его — он нужен для входа.
+
+Если схема уже была применена ранее, добавьте таблицу участников:
+```sql
+create table if not exists public.tournament_teams (
+  tournament_id uuid not null references public.tournaments(id) on delete cascade,
+  team_name text not null,
+  primary key (tournament_id, team_name)
+);
+```
 
 ## 5) Настройте переменные окружения в Next.js
 Добавьте в `.env.local`:

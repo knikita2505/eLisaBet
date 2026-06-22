@@ -196,3 +196,10 @@ create table if not exists public.team_points_ledger (
   unique (team_id, bet_type, bet_id)
 );
 
+-- Участники турнира (для спецставок)
+create table if not exists public.tournament_teams (
+  tournament_id uuid not null references public.tournaments(id) on delete cascade,
+  team_name text not null,
+  primary key (tournament_id, team_name)
+);
+

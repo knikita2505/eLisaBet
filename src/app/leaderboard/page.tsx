@@ -49,46 +49,56 @@ export default async function LeaderboardPage() {
   });
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Лидерборд</h1>
-        <p className="mt-2 text-white/70">
+        <h1 className="page-title">Лидерборд</h1>
+        <p className="page-desc">
           Очки обновляются по мере появления результатов матчей.
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
-        <table className="w-full text-left">
-          <thead className="bg-white/5 text-white/70 text-sm">
+      <div className="table-shell">
+        <table className="w-full text-left text-sm">
+          <thead>
             <tr>
-              <th className="py-3 px-4">#</th>
-              <th className="py-3 px-4">Команда</th>
-              <th className="py-3 px-4">Очки</th>
-              <th className="py-3 px-4">Точные счёты (верно)</th>
-              <th className="py-3 px-4">Код</th>
+              <th>#</th>
+              <th>Команда</th>
+              <th>Очки</th>
+              <th>Точные счёты</th>
+              <th className="hidden sm:table-cell">Код</th>
             </tr>
           </thead>
-          <tbody className="text-sm">
+          <tbody>
             {sorted.map((t, idx) => {
               const isMe = t.id === team.teamId;
+              const isTop = idx === 0 && t.points > 0;
               return (
                 <tr
                   key={t.id}
-                  className={isMe ? "bg-orange-500/10" : undefined}
+                  className={isMe ? "row-highlight" : undefined}
                 >
-                  <td className="py-3 px-4">{idx + 1}</td>
-                  <td className="py-3 px-4 font-semibold">
-                    {t.name ?? "(без названия)"}
+                  <td className="text-muted">
+                    {isTop ? "🏆" : idx + 1}
                   </td>
-                  <td className="py-3 px-4 font-semibold">{t.points}</td>
-                  <td className="py-3 px-4">{t.exactCorrect}</td>
-                  <td className="py-3 px-4 text-white/60">{t.code}</td>
+                  <td className="font-semibold">
+                    {t.name ?? "(без названия)"}
+                    {isMe ? (
+                      <span className="ml-2 text-xs font-normal text-accent">
+                        вы
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="points-value text-base">{t.points}</td>
+                  <td className="text-muted">{t.exactCorrect}</td>
+                  <td className="hidden font-mono text-xs text-muted sm:table-cell">
+                    {t.code}
+                  </td>
                 </tr>
               );
             })}
             {!sorted.length ? (
               <tr>
-                <td className="py-4 px-4 text-white/70" colSpan={5}>
+                <td className="text-muted" colSpan={5}>
                   Пока нет данных. Нужно синхронизировать матчи.
                 </td>
               </tr>
@@ -99,4 +109,3 @@ export default async function LeaderboardPage() {
     </div>
   );
 }
-
