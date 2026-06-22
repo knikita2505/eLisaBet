@@ -77,96 +77,109 @@ export default async function MyBetsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Мои ставки</h1>
-        <p className="mt-2 text-white/70">
-          Команда: <span className="text-white font-semibold">{team.name}</span> ·
-          Очков: <span className="text-orange-400 font-semibold">{totalPoints}</span>
-        </p>
+      <div className="card-padded flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="page-title">Мои ставки</h1>
+          <p className="page-desc">Команда: {team.name}</p>
+        </div>
+        <div className="rounded-xl border border-orange-500/25 bg-orange-500/10 px-5 py-3 text-center shadow-md shadow-orange-500/10">
+          <div className="text-xs uppercase tracking-wide text-muted">Очков</div>
+          <div className="text-3xl font-bold text-accent">{totalPoints}</div>
+        </div>
       </div>
 
-      <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <h2 className="text-lg font-semibold">Спецставки</h2>
-        <div className="mt-3 flex flex-col gap-2 text-sm">
-          <div className="flex justify-between gap-4 border-b border-white/10 pb-2">
-            <span>Победитель ЧМ</span>
-            <span className="text-white/80">
+      <section className="card-padded">
+        <h2 className="section-title">Спецставки</h2>
+        <div className="mt-4 flex flex-col gap-3 text-sm">
+          <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
+            <span className="text-muted">Победитель ЧМ</span>
+            <span>
               {championBet?.pick_country ?? "—"}
-              {championBet
-                ? ` (+${pointsByBet.get(`champion:${championBet.id}`) ?? 0})`
-                : ""}
+              {championBet ? (
+                <span className="ml-2 points-value">
+                  +{pointsByBet.get(`champion:${championBet.id}`) ?? 0}
+                </span>
+              ) : null}
             </span>
           </div>
           <div className="flex justify-between gap-4">
-            <span>3-е место</span>
-            <span className="text-white/80">
+            <span className="text-muted">3-е место</span>
+            <span>
               {thirdBet?.pick_country ?? "—"}
-              {thirdBet
-                ? ` (+${pointsByBet.get(`third_place:${thirdBet.id}`) ?? 0})`
-                : ""}
+              {thirdBet ? (
+                <span className="ml-2 points-value">
+                  +{pointsByBet.get(`third_place:${thirdBet.id}`) ?? 0}
+                </span>
+              ) : null}
             </span>
           </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <h2 className="text-lg font-semibold">Ставки на матчи</h2>
+      <section className="card-padded">
+        <h2 className="section-title">Ставки на матчи</h2>
 
         {!outcomeBets?.length && !scoreBets?.length ? (
-          <p className="mt-3 text-sm text-white/60">
+          <p className="mt-3 text-sm text-muted">
             Пока нет ставок. Перейдите в раздел «Матчи».
           </p>
         ) : (
-          <div className="mt-4 flex flex-col gap-4">
+          <div className="mt-4 flex flex-col gap-3">
             {matchIds.map((matchId) => {
               const m = matchById.get(matchId);
               const outcome = outcomeBets?.find((b) => b.match_id === matchId);
               const score = scoreBets?.find((b) => b.match_id === matchId);
 
               return (
-                <div
-                  key={matchId}
-                  className="rounded-lg border border-white/10 bg-[#0f2744]/40 p-3"
-                >
+                <div key={matchId} className="card-inner">
                   {m ? (
                     <>
-                      <div className="text-sm text-white/70">
-                        {stageLabel(m.stage)} · {formatDateTime(m.kickoff_at)}
-                      </div>
-                      <div className="font-semibold">
+                      <span className="badge badge-type">{stageLabel(m.stage)}</span>
+                      <div className="mt-2 font-semibold">
                         {m.home_team_name} — {m.away_team_name}
                       </div>
+                      <div className="mt-0.5 text-xs text-muted">
+                        {formatDateTime(m.kickoff_at)}
+                      </div>
                       {m.status === "PLAYED" ? (
-                        <div className="text-sm text-white/80">
-                          Результат: {formatMatchResult(m)}
+                        <div className="mt-1 text-sm text-muted">
+                          Результат:{" "}
+                          <span className="text-white/90">
+                            {formatMatchResult(m)}
+                          </span>
                         </div>
                       ) : (
-                        <div className="text-sm text-orange-400">Ожидается</div>
+                        <div className="mt-1">
+                          <span className="badge badge-open">Ожидается</span>
+                        </div>
                       )}
                     </>
                   ) : (
-                    <div className="text-sm text-white/60">Матч</div>
+                    <div className="text-sm text-muted">Матч</div>
                   )}
 
-                  <div className="mt-2 text-sm space-y-1">
+                  <div className="mt-3 space-y-2 text-sm">
                     {outcome ? (
-                      <div>
-                        Исход:{" "}
-                        {outcome.selection === "home"
-                          ? m?.home_team_name ?? "дома"
-                          : m?.away_team_name ?? "гости"}
-                        {" "}
-                        <span className="text-orange-400">
-                          (+{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0})
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge badge-type">Исход</span>
+                        <span>
+                          {outcome.selection === "home"
+                            ? m?.home_team_name ?? "дома"
+                            : m?.away_team_name ?? "гости"}
+                        </span>
+                        <span className="points-value">
+                          +{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0}
                         </span>
                       </div>
                     ) : null}
                     {score ? (
-                      <div>
-                        Точный счёт: {score.home_goals}:{score.away_goals}
-                        {" "}
-                        <span className="text-orange-400">
-                          (+{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0})
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge badge-type">Точный счёт</span>
+                        <span>
+                          {score.home_goals}:{score.away_goals}
+                        </span>
+                        <span className="points-value">
+                          +{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0}
                         </span>
                       </div>
                     ) : null}

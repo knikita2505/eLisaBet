@@ -91,15 +91,12 @@ export default async function MatchesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Матчи и ставки</h1>
-          <p className="mt-2 text-white/70">
-            Ставки принимаются до начала каждого матча. Точный счёт — голы на
-            табло после окончания матча (при пенальти счёт остаётся, например
-            1:1).
-          </p>
-        </div>
+      <div>
+        <h1 className="page-title">Матчи и ставки</h1>
+        <p className="page-desc">
+          Ставки принимаются до начала каждого матча. Точный счёт — голы на
+          табло после окончания матча.
+        </p>
       </div>
 
       {matches.length ? (
@@ -109,45 +106,42 @@ export default async function MatchesPage() {
           const score = scoreByMatch.get(m.id);
 
           return (
-            <section
-              key={m.id}
-              className="rounded-xl border border-white/10 bg-white/5 p-4"
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-sm text-white/70">
-                      {stageLabel(m.stage)}
-                    </div>
-                    <div className="mt-1 text-lg font-semibold">
-                      {m.home_team_name} — {m.away_team_name}
-                    </div>
+            <section key={m.id} className="card-padded">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <span className="badge badge-type">{stageLabel(m.stage)}</span>
+                  <div className="mt-2 text-lg font-semibold tracking-tight">
+                    {m.home_team_name}
+                    <span className="mx-2 font-normal text-muted">—</span>
+                    {m.away_team_name}
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm text-white/70">
-                      {formatDateTime(m.kickoff_at)}
+                  {m.status !== "SCHEDULED" ? (
+                    <div className="mt-1.5 text-sm text-muted">
+                      Результат:{" "}
+                      <span className="text-white/90">
+                        {formatMatchResult(m)}
+                      </span>
                     </div>
-                    <div className="mt-1 text-sm">
-                      {locked ? (
-                        <span className="text-white/60">Закрыто</span>
-                      ) : (
-                        <span className="text-orange-400">Можно ставить</span>
-                      )}
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
-
-                {m.status !== "SCHEDULED" ? (
-                  <div className="text-sm text-white/80">
-                    Результат: {formatMatchResult(m)}
-                  </div>
-                ) : null}
+                <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
+                  <span className="text-sm text-muted">
+                    {formatDateTime(m.kickoff_at)}
+                  </span>
+                  <span className={locked ? "badge badge-closed" : "badge badge-open"}>
+                    {locked ? "Закрыто" : "Можно ставить"}
+                  </span>
+                </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-lg border border-white/10 bg-[#0f2744]/40 p-3">
-                  <div className="text-sm font-semibold">1) Исход</div>
-                  <form action={setMatchOutcomeBetAction} className="mt-3 flex flex-col gap-2">
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="card-inner">
+                  <div className="section-title">Исход</div>
+                  <p className="mt-1 text-xs text-muted">+1 очко за верный прогноз</p>
+                  <form
+                    action={setMatchOutcomeBetAction}
+                    className="mt-3 flex flex-col gap-2"
+                  >
                     <input type="hidden" name="matchId" value={m.id} />
 
                     <button
@@ -156,9 +150,7 @@ export default async function MatchesPage() {
                       value="home"
                       disabled={locked}
                       className={
-                        selection === "home"
-                          ? "w-full rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
-                          : "w-full rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
+                        selection === "home" ? "bet-btn-active" : "bet-btn"
                       }
                     >
                       Победа: {m.home_team_name}
@@ -169,9 +161,7 @@ export default async function MatchesPage() {
                       value="away"
                       disabled={locked}
                       className={
-                        selection === "away"
-                          ? "w-full rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
-                          : "w-full rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
+                        selection === "away" ? "bet-btn-active" : "bet-btn"
                       }
                     >
                       Победа: {m.away_team_name}
@@ -179,19 +169,23 @@ export default async function MatchesPage() {
                   </form>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-[#0f2744]/40 p-3">
-                  <div className="text-sm font-semibold">2) Точный счёт</div>
+                <div className="card-inner">
+                  <div className="section-title">Точный счёт</div>
+                  <p className="mt-1 text-xs text-muted">+2 очка (+3 с исходом)</p>
 
-                  <form action={setMatchExactScoreBetAction} className="mt-3 grid grid-cols-2 gap-2">
+                  <form
+                    action={setMatchExactScoreBetAction}
+                    className="mt-3 grid grid-cols-2 gap-2"
+                  >
                     <input type="hidden" name="matchId" value={m.id} />
 
-                    <label className="text-xs text-white/70">
+                    <label className="label-sm">
                       {m.home_team_name}
                       <select
                         name="homeGoals"
                         defaultValue={score?.home_goals ?? 0}
                         disabled={locked}
-                        className="mt-1 w-full rounded-md bg-[#0f2744] border border-white/10 px-2 py-1 disabled:opacity-50"
+                        className="select"
                       >
                         {Array.from({ length: 8 }).map((_, i) => (
                           <option key={i} value={i}>
@@ -201,13 +195,13 @@ export default async function MatchesPage() {
                       </select>
                     </label>
 
-                    <label className="text-xs text-white/70">
+                    <label className="label-sm">
                       {m.away_team_name}
                       <select
                         name="awayGoals"
                         defaultValue={score?.away_goals ?? 0}
                         disabled={locked}
-                        className="mt-1 w-full rounded-md bg-[#0f2744] border border-white/10 px-2 py-1 disabled:opacity-50"
+                        className="select"
                       >
                         {Array.from({ length: 8 }).map((_, i) => (
                           <option key={i} value={i}>
@@ -220,7 +214,7 @@ export default async function MatchesPage() {
                     <button
                       type="submit"
                       disabled={locked}
-                      className="col-span-2 mt-1 inline-flex justify-center rounded-md bg-orange-500 px-3 py-2 font-semibold text-[#0f2744] hover:bg-orange-400 disabled:opacity-50"
+                      className="btn-primary col-span-2 mt-1"
                     >
                       Сохранить
                     </button>
@@ -231,7 +225,7 @@ export default async function MatchesPage() {
           );
         })
       ) : (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-white/70">
+        <div className="card-padded text-muted">
           Пока нет данных матчей. Админу нужно синхронизировать расписание.
         </div>
       )}
