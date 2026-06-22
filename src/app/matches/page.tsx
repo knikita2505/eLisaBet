@@ -5,7 +5,7 @@ import { getActiveTournament } from "@/lib/db/tournament";
 import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
 import { stageLabel } from "@/lib/betting/stageMapping";
 import { formatMatchResult } from "@/lib/betting/score";
-import { setMatchExactScoreBetAction, setMatchOutcomeBetAction } from "@/app/_actions/bets";
+import { MatchBetForm } from "@/app/matches/MatchBetForm";
 
 function formatDateTime(iso: string) {
   const d = new Date(iso);
@@ -42,10 +42,15 @@ type ExactScoreBetRow = {
   away_goals: number;
 };
 
-export default async function MatchesPage() {
+export default async function MatchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const team = await requireSessionTeam();
   if (!team.name) redirect("/onboarding");
 
+  const params = await searchParams;
   const tournamentId = await getActiveTournament();
 
   const { data: matchesRaw } = await supabaseAdmin
@@ -94,15 +99,27 @@ export default async function MatchesPage() {
       <div>
         <h1 className="page-title">Матчи и ставки</h1>
         <p className="page-desc">
-          Ставки принимаются до начала каждого матча. Точный счёт — голы на
-          табло после окончания матча.
+          Выберите исход и точный счёт, затем нажмите «Сохранить ставки» на
+          карточке матча. Ставки принимаются до начала игры.
         </p>
       </div>
+
+      {params.saved ? (
+        <div className="alert-success">Ставки сохранены.</div>
+      ) : null}
+      {params.locked ? (
+        <div className="alert-error">Приём ставок на этот матч закрыт.</div>
+      ) : null}
+      {params.error ? (
+        <div className="alert-error">
+          Не удалось сохранить. Проверьте, что выбран исход.
+        </div>
+      ) : null}
 
       {matches.length ? (
         matches.map((m) => {
           const locked = now >= new Date(m.kickoff_at);
-          const selection = outcomeByMatch.get(m.id);
+          const selection = outcomeByMatch.get(m.id) ?? null;
           const score = scoreByMatch.get(m.id);
 
           return (
@@ -128,99 +145,25 @@ export default async function MatchesPage() {
                   <span className="text-sm text-muted">
                     {formatDateTime(m.kickoff_at)}
                   </span>
-                  <span className={locked ? "badge badge-closed" : "badge badge-open"}>
+                  <span
+                    className={
+                      locked ? "badge badge-closed" : "badge badge-open"
+                    }
+                  >
                     {locked ? "Закрыто" : "Можно ставить"}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="card-inner">
-                  <div className="section-title">Исход</div>
-                  <p className="mt-1 text-xs text-muted">+1 очко за верный прогноз</p>
-                  <form
-                    action={setMatchOutcomeBetAction}
-                    className="mt-3 flex flex-col gap-2"
-                  >
-                    <input type="hidden" name="matchId" value={m.id} />
-
-                    <button
-                      type="submit"
-                      name="selection"
-                      value="home"
-                      disabled={locked}
-                      className={
-                        selection === "home" ? "bet-btn-active" : "bet-btn"
-                      }
-                    >
-                      Победа: {m.home_team_name}
-                    </button>
-                    <button
-                      type="submit"
-                      name="selection"
-                      value="away"
-                      disabled={locked}
-                      className={
-                        selection === "away" ? "bet-btn-active" : "bet-btn"
-                      }
-                    >
-                      Победа: {m.away_team_name}
-                    </button>
-                  </form>
-                </div>
-
-                <div className="card-inner">
-                  <div className="section-title">Точный счёт</div>
-                  <p className="mt-1 text-xs text-muted">+2 очка (+3 с исходом)</p>
-
-                  <form
-                    action={setMatchExactScoreBetAction}
-                    className="mt-3 grid grid-cols-2 gap-2"
-                  >
-                    <input type="hidden" name="matchId" value={m.id} />
-
-                    <label className="label-sm">
-                      {m.home_team_name}
-                      <select
-                        name="homeGoals"
-                        defaultValue={score?.home_goals ?? 0}
-                        disabled={locked}
-                        className="select"
-                      >
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <option key={i} value={i}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="label-sm">
-                      {m.away_team_name}
-                      <select
-                        name="awayGoals"
-                        defaultValue={score?.away_goals ?? 0}
-                        disabled={locked}
-                        className="select"
-                      >
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <option key={i} value={i}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <button
-                      type="submit"
-                      disabled={locked}
-                      className="btn-primary col-span-2 mt-1"
-                    >
-                      Сохранить
-                    </button>
-                  </form>
-                </div>
-              </div>
+              <MatchBetForm
+                matchId={m.id}
+                homeTeamName={m.home_team_name}
+                awayTeamName={m.away_team_name}
+                locked={locked}
+                initialSelection={selection}
+                initialHomeGoals={score?.home_goals ?? 0}
+                initialAwayGoals={score?.away_goals ?? 0}
+              />
             </section>
           );
         })

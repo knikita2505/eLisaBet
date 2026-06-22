@@ -1,4 +1,24 @@
-import type { CSSProperties } from "react";
+type FlowerPlacement = {
+  top: string;
+  left?: string;
+  right?: string;
+  width: number;
+  rotate: number;
+  opacity: number;
+};
+
+const FLOWER_ASPECT = 1024 / 819;
+
+const FLOWERS: FlowerPlacement[] = [
+  { top: "5%", left: "3%", width: 72, rotate: -18, opacity: 0.38 },
+  { top: "16%", right: "5%", width: 60, rotate: 22, opacity: 0.32 },
+  { top: "38%", left: "1%", width: 52, rotate: 12, opacity: 0.28 },
+  { top: "52%", right: "3%", width: 80, rotate: -8, opacity: 0.35 },
+  { top: "68%", left: "8%", width: 56, rotate: -25, opacity: 0.3 },
+  { top: "78%", right: "10%", width: 68, rotate: 15, opacity: 0.32 },
+  { top: "28%", left: "82%", width: 48, rotate: 30, opacity: 0.26 },
+  { top: "85%", left: "42%", width: 44, rotate: -12, opacity: 0.28 },
+];
 
 export function SportsBackground() {
   return (
@@ -6,116 +26,39 @@ export function SportsBackground() {
       aria-hidden
       className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
     >
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(165deg, #0c2548 0%, #0a1e36 42%, #071525 100%)",
+        }}
+      />
+
       <div className="absolute -top-24 -right-24 h-[28rem] w-[28rem] rounded-full bg-orange-500/[0.07] blur-3xl" />
       <div className="absolute top-1/3 -left-32 h-[24rem] w-[24rem] rounded-full bg-sky-400/[0.05] blur-3xl" />
       <div className="absolute -bottom-32 right-1/4 h-[32rem] w-[32rem] rounded-full bg-emerald-400/[0.04] blur-3xl" />
 
-      <Football className="absolute left-[6%] top-[14%] h-16 w-16 opacity-[0.06] rotate-12" />
-      <Trophy className="absolute right-[8%] top-[20%] h-14 w-14 opacity-[0.07] -rotate-6" />
-      <Football className="absolute right-[15%] bottom-[18%] h-20 w-20 opacity-[0.05] rotate-[-20deg]" />
-      <Trophy className="absolute left-[12%] bottom-[22%] h-12 w-12 opacity-[0.06] rotate-6" />
-      <Football className="absolute left-1/2 top-[8%] h-10 w-10 opacity-[0.04] -translate-x-1/2 rotate-45" />
-      <Whistle className="absolute right-[28%] bottom-[12%] h-11 w-11 opacity-[0.05] rotate-[-12deg]" />
+      {FLOWERS.map((flower, i) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={i}
+          src="/flower.png"
+          alt=""
+          width={819}
+          height={1024}
+          className="absolute select-none"
+          draggable={false}
+          style={{
+            top: flower.top,
+            left: flower.left,
+            right: flower.right,
+            width: flower.width,
+            height: Math.round(flower.width * FLOWER_ASPECT),
+            opacity: flower.opacity,
+            transform: `rotate(${flower.rotate}deg)`,
+          }}
+        />
+      ))}
     </div>
-  );
-}
-
-function Football({
-  className,
-}: {
-  className?: string;
-  style?: CSSProperties;
-}) {
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      fill="none"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle
-        cx="32"
-        cy="32"
-        r="30"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-white"
-      />
-      <path
-        d="M32 8 L38 18 L32 22 L26 18 Z M32 56 L38 46 L32 42 L26 46 Z M8 32 L18 26 L22 32 L18 38 Z M56 32 L46 38 L42 32 L46 26 Z"
-        fill="currentColor"
-        className="text-white"
-      />
-      <path
-        d="M32 22 L42 28 L38 38 L32 42 L26 38 L22 28 Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-white"
-      />
-    </svg>
-  );
-}
-
-function Trophy({ className }: { className?: string; style?: CSSProperties }) {
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      fill="none"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M16 12 H48 V22 C48 30 42 36 32 36 C22 36 16 30 16 22 Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-amber-200"
-      />
-      <path
-        d="M12 14 H16 V20 C16 24 14 26 10 26 H8 V14 Z M52 14 H48 V20 C48 24 50 26 54 26 H56 V14 Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-amber-200"
-      />
-      <path
-        d="M28 36 H36 V44 H28 Z M24 44 H40 V48 H24 Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-amber-200"
-      />
-      <path
-        d="M20 48 H44 V52 H20 Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-amber-200"
-      />
-    </svg>
-  );
-}
-
-function Whistle({ className }: { className?: string; style?: CSSProperties }) {
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      fill="none"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <ellipse
-        cx="28"
-        cy="32"
-        rx="14"
-        ry="10"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-white"
-      />
-      <path
-        d="M42 28 H54 C56 28 58 30 58 32 C58 34 56 36 54 36 H42"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-white"
-      />
-      <circle cx="22" cy="32" r="3" fill="currentColor" className="text-white" />
-    </svg>
   );
 }

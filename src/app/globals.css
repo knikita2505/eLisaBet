@@ -21,15 +21,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  min-height: 100%;
+  background: #071525;
+}
+
 body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
-  background: linear-gradient(
-    165deg,
-    #0c2548 0%,
-    #0a1e36 38%,
-    #071525 100%
-  );
+  background: transparent;
   min-height: 100vh;
 }
 
