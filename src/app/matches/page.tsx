@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
 import { stageLabel } from "@/lib/betting/stageMapping";
+import { formatMatchResult } from "@/lib/betting/score";
 import { setMatchExactScoreBetAction, setMatchOutcomeBetAction } from "@/app/_actions/bets";
 
 function formatDateTime(iso: string) {
@@ -39,8 +40,6 @@ type ExactScoreBetRow = {
   match_id: string;
   home_goals: number;
   away_goals: number;
-  home_penalties: number | null;
-  away_penalties: number | null;
 };
 
 export default async function MatchesPage() {
@@ -75,9 +74,7 @@ export default async function MatchesPage() {
   if (matchIds.length) {
     const { data } = await supabaseAdmin
       .from("bets_exact_score")
-      .select(
-        "match_id,home_goals,away_goals,home_penalties,away_penalties"
-      )
+      .select("match_id,home_goals,away_goals")
       .eq("team_id", team.teamId)
       .in("match_id", matchIds);
     scoreBets = (data ?? []) as ExactScoreBetRow[];
@@ -98,7 +95,9 @@ export default async function MatchesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Матчи и ставки</h1>
           <p className="mt-2 text-white/70">
-            Ставки принимаются до начала каждого матча.
+            Ставки принимаются до начала каждого матча. Точный счёт — голы на
+            табло после окончания матча (при пенальти счёт остаётся, например
+            1:1).
           </p>
         </div>
       </div>
@@ -140,14 +139,7 @@ export default async function MatchesPage() {
 
                 {m.status !== "SCHEDULED" ? (
                   <div className="text-sm text-white/80">
-                    Результат:{" "}
-                    {m.home_goals ?? "-"} : {m.away_goals ?? "-"}
-                    {m.home_penalties != null && m.away_penalties != null ? (
-                      <span className="text-white/60">
-                        {" "}
-                        (пен. {m.home_penalties}–{m.away_penalties})
-                      </span>
-                    ) : null}
+                    Результат: {formatMatchResult(m)}
                   </div>
                 ) : null}
               </div>
@@ -155,7 +147,7 @@ export default async function MatchesPage() {
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-white/10 bg-[#0f2744]/40 p-3">
                   <div className="text-sm font-semibold">1) Исход</div>
-                  <form action={setMatchOutcomeBetAction} className="mt-3 flex gap-2">
+                  <form action={setMatchOutcomeBetAction} className="mt-3 flex flex-col gap-2">
                     <input type="hidden" name="matchId" value={m.id} />
 
                     <button
@@ -165,11 +157,11 @@ export default async function MatchesPage() {
                       disabled={locked}
                       className={
                         selection === "home"
-                          ? "flex-1 rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
-                          : "flex-1 rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
+                          ? "w-full rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
+                          : "w-full rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
                       }
                     >
-                      Победа первой
+                      Победа: {m.home_team_name}
                     </button>
                     <button
                       type="submit"
@@ -178,11 +170,11 @@ export default async function MatchesPage() {
                       disabled={locked}
                       className={
                         selection === "away"
-                          ? "flex-1 rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
-                          : "flex-1 rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
+                          ? "w-full rounded-md bg-orange-500 text-[#0f2744] px-3 py-2 font-semibold disabled:opacity-50"
+                          : "w-full rounded-md border border-white/15 text-white/90 px-3 py-2 hover:bg-white/10 disabled:opacity-50"
                       }
                     >
-                      Победа второй
+                      Победа: {m.away_team_name}
                     </button>
                   </form>
                 </div>
@@ -194,7 +186,7 @@ export default async function MatchesPage() {
                     <input type="hidden" name="matchId" value={m.id} />
 
                     <label className="text-xs text-white/70">
-                      Хозяева
+                      {m.home_team_name}
                       <select
                         name="homeGoals"
                         defaultValue={score?.home_goals ?? 0}
@@ -210,55 +202,13 @@ export default async function MatchesPage() {
                     </label>
 
                     <label className="text-xs text-white/70">
-                      Гости
+                      {m.away_team_name}
                       <select
                         name="awayGoals"
                         defaultValue={score?.away_goals ?? 0}
                         disabled={locked}
                         className="mt-1 w-full rounded-md bg-[#0f2744] border border-white/10 px-2 py-1 disabled:opacity-50"
                       >
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <option key={i} value={i}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="col-span-2 text-xs text-white/70">
-                      Если выбрали одинаковый счёт (например, 1:1), укажите пенальти.
-                    </div>
-
-                    <label className="text-xs text-white/70">
-                      Пен. хозяева
-                      <select
-                        name="homePenalties"
-                        defaultValue={
-                          score?.home_penalties != null ? String(score.home_penalties) : ""
-                        }
-                        disabled={locked}
-                        className="mt-1 w-full rounded-md bg-[#0f2744] border border-white/10 px-2 py-1 disabled:opacity-50"
-                      >
-                        <option value="">—</option>
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <option key={i} value={i}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="text-xs text-white/70">
-                      Пен. гости
-                      <select
-                        name="awayPenalties"
-                        defaultValue={
-                          score?.away_penalties != null ? String(score.away_penalties) : ""
-                        }
-                        disabled={locked}
-                        className="mt-1 w-full rounded-md bg-[#0f2744] border border-white/10 px-2 py-1 disabled:opacity-50"
-                      >
-                        <option value="">—</option>
                         {Array.from({ length: 8 }).map((_, i) => (
                           <option key={i} value={i}>
                             {i}
@@ -288,4 +238,3 @@ export default async function MatchesPage() {
     </div>
   );
 }
-

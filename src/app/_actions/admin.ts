@@ -58,6 +58,60 @@ export async function createTeamAction(formData: FormData) {
   redirect(`/admin?created=${encodeURIComponent(code)}`);
 }
 
+export async function updateTeamNameAction(formData: FormData) {
+  await requireAdmin();
+
+  const teamId = formData.get("teamId");
+  const nameRaw = formData.get("name");
+  const name = typeof nameRaw === "string" ? nameRaw.trim() : "";
+
+  if (typeof teamId !== "string" || !teamId || !name) {
+    redirect("/admin?error=invalid");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("teams")
+    .update({ name })
+    .eq("id", teamId);
+
+  if (error) {
+    redirect(`/admin?error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect("/admin?teamUpdated=1");
+}
+
+export async function deleteTeamAction(formData: FormData) {
+  const admin = await requireAdmin();
+
+  const teamId = formData.get("teamId");
+  if (typeof teamId !== "string" || !teamId) {
+    redirect("/admin?error=invalid");
+  }
+
+  if (teamId === admin.teamId) {
+    redirect("/admin?error=" + encodeURIComponent("Нельзя удалить свою команду"));
+  }
+
+  const { data: target } = await supabaseAdmin
+    .from("teams")
+    .select("role")
+    .eq("id", teamId)
+    .single();
+
+  if (target?.role === "admin") {
+    redirect("/admin?error=" + encodeURIComponent("Нельзя удалить админа"));
+  }
+
+  const { error } = await supabaseAdmin.from("teams").delete().eq("id", teamId);
+
+  if (error) {
+    redirect(`/admin?error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect("/admin?teamDeleted=1");
+}
+
 export async function updateMatchResultAction(formData: FormData) {
   await requireAdmin();
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { exactScoreMatchesBet, matchWinner } from "@/lib/betting/score";
 
 type MatchForScoring = {
   id: string;
@@ -12,46 +13,7 @@ type MatchForScoring = {
 };
 
 function actualWinner(match: MatchForScoring): "home" | "away" | null {
-  const hg = match.home_goals;
-  const ag = match.away_goals;
-  if (hg == null || ag == null) return null;
-  if (hg !== ag) return hg > ag ? "home" : "away";
-
-  // Full-time draw: decide by penalties (should exist for knockout)
-  const hp = match.home_penalties;
-  const ap = match.away_penalties;
-  if (hp == null || ap == null) return null;
-  return hp > ap ? "home" : "away";
-}
-
-function exactScoreMatchesBet(
-  match: MatchForScoring,
-  bet: {
-    home_goals: number;
-    away_goals: number;
-    home_penalties: number | null;
-    away_penalties: number | null;
-  }
-) {
-  const hg = match.home_goals;
-  const ag = match.away_goals;
-  if (hg == null || ag == null) return false;
-
-  if (hg !== ag) {
-    return bet.home_goals === hg && bet.away_goals === ag;
-  }
-
-  // Penalties case: exact score includes penalties (bet requires penalties when goals equal)
-  const hp = match.home_penalties;
-  const ap = match.away_penalties;
-  if (hp == null || ap == null) return false;
-
-  return (
-    bet.home_goals === hg &&
-    bet.away_goals === ag &&
-    bet.home_penalties === hp &&
-    bet.away_penalties === ap
-  );
+  return matchWinner(match);
 }
 
 async function ledgerExists(

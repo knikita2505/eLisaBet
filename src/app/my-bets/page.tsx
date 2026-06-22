@@ -3,6 +3,7 @@ import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { stageLabel } from "@/lib/betting/stageMapping";
+import { formatMatchResult } from "@/lib/betting/score";
 
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("ru-RU", {
@@ -26,9 +27,7 @@ export default async function MyBetsPage() {
 
   const { data: scoreBets } = await supabaseAdmin
     .from("bets_exact_score")
-    .select(
-      "id,home_goals,away_goals,home_penalties,away_penalties,match_id,created_at"
-    )
+    .select("id,home_goals,away_goals,match_id,created_at")
     .eq("team_id", team.teamId);
 
   const { data: championBet } = await supabaseAdmin
@@ -139,10 +138,7 @@ export default async function MyBetsPage() {
                       </div>
                       {m.status === "PLAYED" ? (
                         <div className="text-sm text-white/80">
-                          Результат: {m.home_goals}:{m.away_goals}
-                          {m.home_penalties != null
-                            ? ` (пен. ${m.home_penalties}:${m.away_penalties})`
-                            : ""}
+                          Результат: {formatMatchResult(m)}
                         </div>
                       ) : (
                         <div className="text-sm text-orange-400">Ожидается</div>
@@ -157,8 +153,8 @@ export default async function MyBetsPage() {
                       <div>
                         Исход:{" "}
                         {outcome.selection === "home"
-                          ? "победа первой"
-                          : "победа второй"}
+                          ? m?.home_team_name ?? "дома"
+                          : m?.away_team_name ?? "гости"}
                         {" "}
                         <span className="text-orange-400">
                           (+{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0})
@@ -168,9 +164,6 @@ export default async function MyBetsPage() {
                     {score ? (
                       <div>
                         Точный счёт: {score.home_goals}:{score.away_goals}
-                        {score.home_penalties != null
-                          ? ` (пен. ${score.home_penalties}:${score.away_penalties})`
-                          : ""}
                         {" "}
                         <span className="text-orange-400">
                           (+{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0})

@@ -34,9 +34,14 @@ export function TopNav({ team }: { team: TeamSession | null }) {
                 Лидерборд
               </Link>
               {isAdmin ? (
-                <Link href="/admin" className="hover:text-orange-500">
-                  Админ
-                </Link>
+                <>
+                  <Link href="/admin" className="hover:text-orange-500">
+                    Админ
+                  </Link>
+                  <Link href="/admin/bets" className="hover:text-orange-500">
+                    Все ставки
+                  </Link>
+                </>
               ) : null}
 
               <form action={logoutAction}>

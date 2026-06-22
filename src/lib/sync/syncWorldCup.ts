@@ -1,10 +1,14 @@
 import "server-only";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { fetchWorldCupMatchesFromFootballData, fetchWorldCupTeamsFromFootballData } from "@/lib/football/footballDataClient";
-import { MIN_PLAYOFF_STAGE_RANK, STAGE_RANK } from "@/lib/betting/stages";
+import {
+  fetchWorldCupMatchesFromFootballData,
+  fetchWorldCupTeamsFromFootballData,
+} from "@/lib/football/footballDataClient";
+import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
 import { stageKeyFromFootballData } from "@/lib/betting/stageMapping";
-import { awardChampionAndThirdPlace, awardPointsForPlayedMatch } from "@/lib/sync/awardPoints";
+import { finalizeTournamentSync } from "@/lib/sync/finalizeSync";
+import { upsertMatchesWithDedup } from "@/lib/sync/matchUpsert";
+import type { MatchUpsertPayload, SyncResult } from "@/lib/sync/types";
 
 type FootballMatch = {
   id: number | string;
@@ -20,21 +24,6 @@ type FootballMatch = {
     fulltime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
     penalties?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
   };
-};
-
-type MatchUpsertPayload = {
-  tournament_id: string;
-  external_id: number;
-  stage: string;
-  stage_rank: number;
-  kickoff_at: string;
-  home_team_name: string;
-  away_team_name: string;
-  status: "PLAYED" | "SCHEDULED";
-  home_goals: number | null;
-  away_goals: number | null;
-  home_penalties: number | null;
-  away_penalties: number | null;
 };
 
 function extractNumber(maybe: unknown): number | null {
@@ -71,7 +60,6 @@ function mapFootballMatchToDbMatch(args: {
 
   const statusRaw = String(m.status ?? "");
   const played = isPlayedStatus(statusRaw);
-
   const score = m.score ?? {};
 
   const homeGoals = extractNumber(
@@ -86,7 +74,6 @@ function mapFootballMatchToDbMatch(args: {
       score?.fulltime?.away ??
       score?.fulltime?.awayTeam
   );
-
   const homePenalties = extractNumber(
     score?.penalties?.home ?? score?.penalties?.homeTeam
   );
@@ -110,13 +97,7 @@ function mapFootballMatchToDbMatch(args: {
   };
 }
 
-export type SyncResult = {
-  fetched: number;
-  upserted: number;
-  skipped: number;
-  played: number;
-  pointsAwarded: number;
-};
+export type { SyncResult };
 
 export async function syncWorldCupMatches(): Promise<SyncResult> {
   const tournamentId = await getActiveTournament();
@@ -124,158 +105,34 @@ export async function syncWorldCupMatches(): Promise<SyncResult> {
 
   const payloads: MatchUpsertPayload[] = [];
   for (const m0 of footballMatches) {
-    const m = m0 as FootballMatch;
-    const mapped = mapFootballMatchToDbMatch({ tournamentId, m });
-    if (!mapped) continue;
-    payloads.push(mapped);
+    const mapped = mapFootballMatchToDbMatch({
+      tournamentId,
+      m: m0 as FootballMatch,
+    });
+    if (mapped) payloads.push(mapped);
   }
 
   if (!payloads.length) {
-    return {
+    return finalizeTournamentSync({
       fetched: footballMatches.length,
       upserted: 0,
       skipped: footballMatches.length,
-      played: 0,
-      pointsAwarded: 0,
-    };
+    });
   }
 
-  // Upsert matches
-  const { error: upsertError } = await supabaseAdmin
-    .from("matches")
-    .upsert(payloads, { onConflict: "tournament_id,external_id" });
+  const upserted = await upsertMatchesWithDedup(payloads);
 
-  if (upsertError) throw upsertError;
-
-  // Участники турнира (для спецставок)
+  let tournamentTeams: string[] = [];
   try {
-    const apiTeams = await fetchWorldCupTeamsFromFootballData();
-    if (apiTeams.length) {
-      const { error: teamsError } = await supabaseAdmin
-        .from("tournament_teams")
-        .upsert(
-          apiTeams.map((name) => ({ tournament_id: tournamentId, team_name: name })),
-          { onConflict: "tournament_id,team_name" }
-        );
-      if (teamsError) {
-        console.warn("tournament_teams sync skipped:", teamsError.message);
-      }
-    }
+    tournamentTeams = await fetchWorldCupTeamsFromFootballData();
   } catch (e) {
     console.warn("teams fetch failed:", e);
   }
 
-  // Update lock timestamps for winner/3rd place (earliest R32 kickoff)
-  const { data: r32Rows } = await supabaseAdmin
-    .from("matches")
-    .select("kickoff_at")
-    .eq("tournament_id", tournamentId)
-    .eq("stage_rank", STAGE_RANK.R32);
-
-  const earliest = (r32Rows ?? [])
-    .map((r) => r.kickoff_at)
-    .filter(Boolean)
-    .sort(
-      (a: string, b: string) =>
-        new Date(a).getTime() - new Date(b).getTime()
-    )[0];
-
-  if (earliest) {
-    await supabaseAdmin
-      .from("tournaments")
-      .update({
-        winner_bet_locked_at: earliest,
-        third_place_bet_locked_at: earliest,
-      })
-      .eq("id", tournamentId);
-  }
-
-  // Award points for all played matches in MVP
-  const { data: playedMatches } = await supabaseAdmin
-    .from("matches")
-    .select(
-      "id,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties,status"
-    )
-    .eq("tournament_id", tournamentId)
-    .gte("stage_rank", MIN_PLAYOFF_STAGE_RANK)
-    .eq("status", "PLAYED");
-
-  let pointsAwarded = 0;
-
-  for (const match of playedMatches ?? []) {
-    const before = await countLedgerEntries(tournamentId);
-    await awardPointsForPlayedMatch({
-      tournamentId,
-      match,
-    });
-    const after = await countLedgerEntries(tournamentId);
-    pointsAwarded += after - before;
-  }
-
-  // Champion + third place bets (based on FINAL and THIRD_PLACE matches)
-  const { data: finalMatch } = await supabaseAdmin
-    .from("matches")
-    .select(
-      "home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
-    )
-    .eq("tournament_id", tournamentId)
-    .eq("stage_rank", STAGE_RANK.FINAL)
-    .eq("status", "PLAYED")
-    .maybeSingle();
-
-  const { data: thirdMatch } = await supabaseAdmin
-    .from("matches")
-    .select(
-      "home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
-    )
-    .eq("tournament_id", tournamentId)
-    .eq("stage_rank", STAGE_RANK.THIRD_PLACE)
-    .eq("status", "PLAYED")
-    .maybeSingle();
-
-  type MatchForWinner = {
-    home_team_name: string;
-    away_team_name: string;
-    home_goals: number | null;
-    away_goals: number | null;
-    home_penalties: number | null;
-    away_penalties: number | null;
-  };
-
-  const winnerNameFromMatch = (match: MatchForWinner | null) => {
-    // winner based on full-time goals, otherwise penalties
-    if (!match) return null;
-    const hg = match.home_goals;
-    const ag = match.away_goals;
-    if (hg == null || ag == null) return null;
-    if (hg !== ag) return hg > ag ? match.home_team_name : match.away_team_name;
-
-    const hp = match.home_penalties;
-    const ap = match.away_penalties;
-    if (hp == null || ap == null) return null;
-    return hp > ap ? match.home_team_name : match.away_team_name;
-  };
-
-  await awardChampionAndThirdPlace({
-    tournamentId,
-    championName: winnerNameFromMatch(finalMatch),
-    thirdPlaceName: winnerNameFromMatch(thirdMatch),
-  });
-
-  return {
+  return finalizeTournamentSync({
     fetched: footballMatches.length,
-    upserted: payloads.length,
+    upserted,
     skipped: footballMatches.length - payloads.length,
-    played: playedMatches?.length ?? 0,
-    pointsAwarded,
-  };
+    tournamentTeams,
+  });
 }
-
-async function countLedgerEntries(tournamentId: string) {
-  const { count } = await supabaseAdmin
-    .from("team_points_ledger")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId);
-  return count ?? 0;
-}
-

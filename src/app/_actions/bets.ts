@@ -61,8 +61,6 @@ export async function setMatchExactScoreBetAction(formData: FormData) {
 
   const homeGoals = toInt(formData.get("homeGoals"));
   const awayGoals = toInt(formData.get("awayGoals"));
-  const homePenalties = toInt(formData.get("homePenalties"));
-  const awayPenalties = toInt(formData.get("awayPenalties"));
 
   if (!matchId || homeGoals === null || awayGoals === null) redirect("/matches?error=1");
   if (homeGoals < 0 || homeGoals > 10 || awayGoals < 0 || awayGoals > 10) redirect("/matches?error=1");
@@ -79,35 +77,20 @@ export async function setMatchExactScoreBetAction(formData: FormData) {
   if (match.stage_rank < MIN_PLAYOFF_STAGE_RANK) redirect("/matches");
   if (match.status && match.status !== "SCHEDULED") redirect("/matches?locked=1");
 
-  const isPenaltiesCase = homeGoals === awayGoals;
-  if (isPenaltiesCase) {
-    if (homePenalties === null || awayPenalties === null) {
-      redirect("/matches?error=1");
-    }
-    if (
-      homePenalties < 0 ||
-      homePenalties > 10 ||
-      awayPenalties < 0 ||
-      awayPenalties > 10
-    )
-      redirect("/matches?error=1");
-    if (homePenalties === awayPenalties) redirect("/matches?error=1");
-  }
-
-  const payload = {
-    team_id: team.teamId,
-    match_id: matchId,
-    home_goals: homeGoals,
-    away_goals: awayGoals,
-    home_penalties: isPenaltiesCase ? homePenalties! : null,
-    away_penalties: isPenaltiesCase ? awayPenalties! : null,
-  };
-
   const { error: upsertError } = await supabaseAdmin
     .from("bets_exact_score")
-    .upsert(payload, { onConflict: "team_id,match_id" });
+    .upsert(
+      {
+        team_id: team.teamId,
+        match_id: matchId,
+        home_goals: homeGoals,
+        away_goals: awayGoals,
+        home_penalties: null,
+        away_penalties: null,
+      },
+      { onConflict: "team_id,match_id" }
+    );
 
   if (upsertError) redirect("/matches?error=1");
   redirect("/matches");
 }
-
