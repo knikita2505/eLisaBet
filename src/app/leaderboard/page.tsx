@@ -11,7 +11,7 @@ export default async function LeaderboardPage() {
 
   const { data: teams } = await supabaseAdmin
     .from("teams")
-    .select("id,code,name")
+    .select("id,name")
     .order("created_at", { ascending: true });
 
   const { data: ledgerRows } = await supabaseAdmin
@@ -21,13 +21,12 @@ export default async function LeaderboardPage() {
 
   const byTeam = new Map<
     string,
-    { id: string; code: string; name: string | null; points: number; exactCorrect: number }
+    { id: string; name: string | null; points: number; exactCorrect: number }
   >();
 
   for (const t of teams ?? []) {
     byTeam.set(t.id, {
       id: t.id,
-      code: t.code,
       name: t.name,
       points: 0,
       exactCorrect: 0,
@@ -65,7 +64,6 @@ export default async function LeaderboardPage() {
               <th>Команда</th>
               <th>Очки</th>
               <th>Точные счёты</th>
-              <th className="hidden sm:table-cell">Код</th>
             </tr>
           </thead>
           <tbody>
@@ -90,15 +88,12 @@ export default async function LeaderboardPage() {
                   </td>
                   <td className="points-value text-base">{t.points}</td>
                   <td className="text-muted">{t.exactCorrect}</td>
-                  <td className="hidden font-mono text-xs text-muted sm:table-cell">
-                    {t.code}
-                  </td>
                 </tr>
               );
             })}
             {!sorted.length ? (
               <tr>
-                <td className="text-muted" colSpan={5}>
+                <td className="text-muted" colSpan={4}>
                   Пока нет данных. Нужно синхронизировать матчи.
                 </td>
               </tr>
