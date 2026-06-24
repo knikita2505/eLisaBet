@@ -5,6 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { stageLabel } from "@/lib/betting/stageMapping";
 import { STAGE_RANK } from "@/lib/betting/stages";
+import { displayTeamName } from "@/lib/betting/teamNames";
+import { loadTeamTranslations } from "@/lib/db/teamTranslations";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
 import { deleteBetAction } from "@/app/_actions/admin";
 
 type BetType =
@@ -89,6 +92,7 @@ export default async function AdminBetsPage({
 
   const params = await searchParams;
   const tournamentId = await getActiveTournament();
+  const translations = await loadTeamTranslations(tournamentId);
 
   const { data: teams } = await supabaseAdmin
     .from("teams")
@@ -153,7 +157,7 @@ export default async function AdminBetsPage({
       stageKey: null,
       stageRank: 0,
       matchLabel: null,
-      pick: b.pick_country,
+      pick: translateTeamToRu(b.pick_country),
       points: pointsByBet.get(`champion:${b.id}`) ?? 0,
     });
   }
@@ -167,7 +171,7 @@ export default async function AdminBetsPage({
       stageKey: null,
       stageRank: 0,
       matchLabel: null,
-      pick: b.pick_country,
+      pick: translateTeamToRu(b.pick_country),
       points: pointsByBet.get(`third_place:${b.id}`) ?? 0,
     });
   }
@@ -177,8 +181,8 @@ export default async function AdminBetsPage({
     const row = ensureTeam(b.team_id);
     const pick =
       b.selection === "home"
-        ? m?.home_team_name ?? "дома"
-        : m?.away_team_name ?? "гости";
+        ? displayTeamName(m?.home_team_name ?? "", "home", translations)
+        : displayTeamName(m?.away_team_name ?? "", "away", translations);
     row.matchBets.push({
       id: b.id,
       betType: "match_outcome",
@@ -186,7 +190,7 @@ export default async function AdminBetsPage({
       stageKey: m?.stage ?? null,
       stageRank: m?.stage_rank ?? STAGE_RANK.R32,
       matchLabel: m
-        ? `${m.home_team_name} — ${m.away_team_name}`
+        ? `${displayTeamName(m.home_team_name, "home", translations)} — ${displayTeamName(m.away_team_name, "away", translations)}`
         : "Матч",
       pick,
       points: pointsByBet.get(`match_outcome:${b.id}`) ?? 0,
@@ -203,7 +207,7 @@ export default async function AdminBetsPage({
       stageKey: m?.stage ?? null,
       stageRank: m?.stage_rank ?? STAGE_RANK.R32,
       matchLabel: m
-        ? `${m.home_team_name} — ${m.away_team_name}`
+        ? `${displayTeamName(m.home_team_name, "home", translations)} — ${displayTeamName(m.away_team_name, "away", translations)}`
         : "Матч",
       pick: `${b.home_goals}:${b.away_goals}`,
       points: pointsByBet.get(`match_exact_score:${b.id}`) ?? 0,

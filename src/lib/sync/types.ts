@@ -4,9 +4,10 @@ export type MatchUpsertPayload = {
   stage: string;
   stage_rank: number;
   kickoff_at: string;
+  bet_locked_at?: string | null;
   home_team_name: string;
   away_team_name: string;
-  status: "PLAYED" | "SCHEDULED";
+  status: "PLAYED" | "SCHEDULED" | "LIVE";
   home_goals: number | null;
   away_goals: number | null;
   home_penalties: number | null;

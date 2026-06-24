@@ -4,7 +4,8 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireSessionTeam } from "@/lib/auth/session";
-import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
+import { MIN_BETTABLE_STAGE_RANK } from "@/lib/betting/stages";
+import { isBettingOpen } from "@/lib/betting/matchStatus";
 
 function toInt(v: FormDataEntryValue | null): number | null {
   if (typeof v !== "string") return null;
@@ -17,16 +18,15 @@ function toInt(v: FormDataEntryValue | null): number | null {
 async function assertMatchOpenForBets(matchId: string) {
   const { data: match, error } = await supabaseAdmin
     .from("matches")
-    .select("id,kickoff_at,stage_rank,status")
+    .select("id,kickoff_at,bet_locked_at,stage_rank,status")
     .eq("id", matchId)
     .single();
 
   if (error || !match) return null;
 
-  const now = new Date();
-  if (now >= new Date(match.kickoff_at)) return null;
-  if (match.stage_rank < MIN_PLAYOFF_STAGE_RANK) return null;
-  if (match.status && match.status !== "SCHEDULED") return null;
+  if (!isBettingOpen(match)) return null;
+  if (match.stage_rank < MIN_BETTABLE_STAGE_RANK) return null;
+  if (match.status === "PLAYED") return null;
 
   return match;
 }

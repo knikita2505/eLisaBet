@@ -33,10 +33,9 @@ export async function upsertMatchesWithDedup(payloads: MatchUpsertPayload[]) {
   for (const payload of payloads) {
     const { data: existing } = await supabaseAdmin
       .from("matches")
-      .select("id,home_team_name,away_team_name")
+      .select("id,home_team_name,away_team_name,bet_locked_at")
       .eq("tournament_id", payload.tournament_id)
-      .eq("kickoff_at", payload.kickoff_at)
-      .eq("stage_rank", payload.stage_rank)
+      .eq("external_id", payload.external_id)
       .maybeSingle();
 
     const row = {
@@ -58,7 +57,10 @@ export async function upsertMatchesWithDedup(payloads: MatchUpsertPayload[]) {
         .eq("id", existing.id);
       if (error) throw error;
     } else {
-      const { error } = await supabaseAdmin.from("matches").insert(row);
+      const { error } = await supabaseAdmin.from("matches").insert({
+        ...row,
+        bet_locked_at: payload.kickoff_at,
+      });
       if (error) throw error;
     }
     upserted++;

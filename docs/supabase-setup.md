@@ -43,6 +43,7 @@ on conflict (code) do nothing;
 create table if not exists public.tournament_teams (
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
   team_name text not null,
+  name_ru text not null default '',
   primary key (tournament_id, team_name)
 );
 ```
@@ -67,6 +68,19 @@ CRON_SECRET=...
 ADMIN_SECRET=... # если понадобятся отдельные защиты (опционально)
 ```
 
-## 6) Запуск синхронизации матчей
+## Миграция (если схема уже была применена ранее)
+
+```sql
+alter table public.matches add column if not exists bet_locked_at timestamptz;
+update public.matches set bet_locked_at = kickoff_at where bet_locked_at is null;
+
+alter table public.tournament_teams add column if not exists name_ru text;
+update public.tournament_teams
+set name_ru = team_name
+where name_ru is null;
+```
+
+После миграции запустите синхронизацию в админке — словарь `name_ru` заполнится автоматически.
+
 После того как реализуем endpoint синка, можно будет делать обновления по `CRON_SECRET`.
 

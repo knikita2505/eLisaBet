@@ -4,21 +4,18 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 import { stageLabel } from "@/lib/betting/stageMapping";
 import { formatMatchResult } from "@/lib/betting/score";
-
-function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
+import { formatDateTime } from "@/lib/formatDateTime";
+import { displayTeamName } from "@/lib/betting/teamNames";
+import { getMatchDisplayStatus } from "@/lib/betting/matchStatus";
+import { loadTeamTranslations } from "@/lib/db/teamTranslations";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
 
 export default async function MyBetsPage() {
   const team = await requireSessionTeam();
   if (!team.name) redirect("/onboarding");
 
   const tournamentId = await getActiveTournament();
+  const translations = await loadTeamTranslations(tournamentId);
 
   const { data: outcomeBets } = await supabaseAdmin
     .from("bets_outcome")
@@ -94,7 +91,10 @@ export default async function MyBetsPage() {
           <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
             <span className="text-muted">Победитель ЧМ</span>
             <span>
-              {championBet?.pick_country ?? "—"}
+              {championBet?.pick_country
+                ? (translations.get(championBet.pick_country) ??
+                  translateTeamToRu(championBet.pick_country))
+                : "—"}
               {championBet ? (
                 <span className="ml-2 points-value">
                   +{pointsByBet.get(`champion:${championBet.id}`) ?? 0}
@@ -105,7 +105,10 @@ export default async function MyBetsPage() {
           <div className="flex justify-between gap-4">
             <span className="text-muted">3-е место</span>
             <span>
-              {thirdBet?.pick_country ?? "—"}
+              {thirdBet?.pick_country
+                ? (translations.get(thirdBet.pick_country) ??
+                  translateTeamToRu(thirdBet.pick_country))
+                : "—"}
               {thirdBet ? (
                 <span className="ml-2 points-value">
                   +{pointsByBet.get(`third_place:${thirdBet.id}`) ?? 0}
@@ -136,7 +139,8 @@ export default async function MyBetsPage() {
                     <>
                       <span className="badge badge-type">{stageLabel(m.stage)}</span>
                       <div className="mt-2 font-semibold">
-                        {m.home_team_name} — {m.away_team_name}
+                        {displayTeamName(m.home_team_name, "home", translations)} —{" "}
+                        {displayTeamName(m.away_team_name, "away", translations)}
                       </div>
                       <div className="mt-0.5 text-xs text-muted">
                         {formatDateTime(m.kickoff_at)}
@@ -150,7 +154,11 @@ export default async function MyBetsPage() {
                         </div>
                       ) : (
                         <div className="mt-1">
-                          <span className="badge badge-open">Ожидается</span>
+                          <span
+                            className={`badge ${getMatchDisplayStatus(m).badgeClass}`}
+                          >
+                            {getMatchDisplayStatus(m).label}
+                          </span>
                         </div>
                       )}
                     </>
@@ -164,8 +172,16 @@ export default async function MyBetsPage() {
                         <span className="badge badge-type">Исход</span>
                         <span>
                           {outcome.selection === "home"
-                            ? m?.home_team_name ?? "дома"
-                            : m?.away_team_name ?? "гости"}
+                            ? displayTeamName(
+                                m?.home_team_name ?? "",
+                                "home",
+                                translations
+                              )
+                            : displayTeamName(
+                                m?.away_team_name ?? "",
+                                "away",
+                                translations
+                              )}
                         </span>
                         <span className="points-value">
                           +{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0}

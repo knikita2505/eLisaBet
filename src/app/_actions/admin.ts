@@ -130,7 +130,7 @@ export async function deleteTeamAction(formData: FormData) {
   redirect("/admin?teamDeleted=1");
 }
 
-export async function updateMatchResultAction(formData: FormData) {
+export async function updateMatchAction(formData: FormData) {
   await requireAdmin();
 
   const matchId = formData.get("matchId");
@@ -138,38 +138,97 @@ export async function updateMatchResultAction(formData: FormData) {
     redirect("/admin/results?error=invalid");
   }
 
+  const homeTeamNameRaw = formData.get("homeTeamName");
+  const awayTeamNameRaw = formData.get("awayTeamName");
+  const homeTeamName =
+    typeof homeTeamNameRaw === "string" ? homeTeamNameRaw.trim() : "";
+  const awayTeamName =
+    typeof awayTeamNameRaw === "string" ? awayTeamNameRaw.trim() : "";
+
+  const statusRaw = formData.get("status");
+  const status =
+    statusRaw === "SCHEDULED" ||
+    statusRaw === "LIVE" ||
+    statusRaw === "PLAYED"
+      ? statusRaw
+      : "SCHEDULED";
+
+  const betLockedAtRaw = formData.get("betLockedAt");
   const homeGoals = Number(formData.get("homeGoals"));
   const awayGoals = Number(formData.get("awayGoals"));
 
+  if (!homeTeamName || !awayTeamName) {
+    redirect("/admin/results?error=" + encodeURIComponent("Укажите названия команд"));
+  }
+
+  const { data: existing } = await supabaseAdmin
+    .from("matches")
+    .select("kickoff_at")
+    .eq("id", matchId)
+    .single();
+
+  if (!existing) redirect("/admin/results?error=invalid");
+
+  const { fromDatetimeLocalValue } = await import("@/lib/formatDateTime");
+
+  let betLockedAt: string;
+  if (typeof betLockedAtRaw === "string" && betLockedAtRaw) {
+    betLockedAt = fromDatetimeLocalValue(betLockedAtRaw);
+  } else {
+    betLockedAt = existing.kickoff_at;
+  }
+
+  if (new Date(betLockedAt) > new Date(existing.kickoff_at)) {
+    redirect(
+      "/admin/results?error=" +
+        encodeURIComponent("Дедлайн ставок не может быть позже начала матча")
+    );
+  }
+
+  const update: Record<string, unknown> = {
+    home_team_name: homeTeamName,
+    away_team_name: awayTeamName,
+    status,
+    bet_locked_at: betLockedAt,
+    home_penalties: null,
+    away_penalties: null,
+  };
+
+  if (status === "PLAYED") {
+    update.home_goals = homeGoals;
+    update.away_goals = awayGoals;
+  }
+
   const { error } = await supabaseAdmin
     .from("matches")
-    .update({
-      status: "PLAYED",
-      home_goals: homeGoals,
-      away_goals: awayGoals,
-      home_penalties: null,
-      away_penalties: null,
-    })
+    .update(update)
     .eq("id", matchId);
 
   if (error) {
     redirect(`/admin/results?error=${encodeURIComponent(error.message)}`);
   }
 
-  const tournamentId = await getActiveTournament();
-  const { data: match } = await supabaseAdmin
-    .from("matches")
-    .select(
-      "id,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
-    )
-    .eq("id", matchId)
-    .single();
+  if (status === "PLAYED") {
+    const tournamentId = await getActiveTournament();
+    const { data: match } = await supabaseAdmin
+      .from("matches")
+      .select(
+        "id,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
+      )
+      .eq("id", matchId)
+      .single();
 
-  if (match) {
-    await awardPointsForPlayedMatch({ tournamentId, match });
+    if (match) {
+      await awardPointsForPlayedMatch({ tournamentId, match });
+    }
   }
 
   redirect("/admin/results?updated=1");
+}
+
+/** @deprecated используйте updateMatchAction */
+export async function updateMatchResultAction(formData: FormData) {
+  return updateMatchAction(formData);
 }
 
 const BET_TABLES = {

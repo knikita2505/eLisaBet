@@ -4,13 +4,17 @@ import {
   fetchWorldCupMatchesFromFootballData,
   fetchWorldCupTeamsFromFootballData,
 } from "@/lib/football/footballDataClient";
-import { MIN_PLAYOFF_STAGE_RANK } from "@/lib/betting/stages";
+import {
+  GROUP_STAGE_FROM_ISO,
+  MIN_BETTABLE_STAGE_RANK,
+  STAGE_RANK,
+} from "@/lib/betting/stages";
 import { stageKeyFromFootballData } from "@/lib/betting/stageMapping";
 import {
   afterMatchImport,
   recalculateTournamentPoints,
 } from "@/lib/sync/finalizeSync";
-import { upsertMatchesWithDedup } from "@/lib/sync/matchUpsert";
+import { upsertMatchesWithDedup, isPlaceholderTeamName } from "@/lib/sync/matchUpsert";
 import type {
   MatchUpsertPayload,
   RecalculateResult,
@@ -23,6 +27,7 @@ type FootballMatch = {
   datetime?: string;
   stage?: string | null;
   matchStage?: string | null;
+  group?: string | null;
   status?: string | null;
   homeTeam?: { name?: string | null; teamName?: string | null };
   awayTeam?: { name?: string | null; teamName?: string | null };
@@ -43,9 +48,19 @@ function extractNumber(maybe: unknown): number | null {
   return null;
 }
 
-function isPlayedStatus(statusRaw: string) {
+function mapMatchStatus(statusRaw: string): MatchUpsertPayload["status"] {
   const s = statusRaw.toUpperCase();
-  return s === "FINISHED" || s === "AWARDED";
+  if (s === "FINISHED" || s === "AWARDED") return "PLAYED";
+  if (
+    s === "IN_PLAY" ||
+    s === "PAUSED" ||
+    s === "LIVE" ||
+    s === "HALFTIME" ||
+    s === "SUSPENDED"
+  ) {
+    return "LIVE";
+  }
+  return "SCHEDULED";
 }
 
 function mapFootballMatchToDbMatch(args: {
@@ -54,11 +69,21 @@ function mapFootballMatchToDbMatch(args: {
 }): MatchUpsertPayload | null {
   const { tournamentId, m } = args;
 
-  const stage = stageKeyFromFootballData(m.stage ?? m.matchStage);
-  if (stage.rank < MIN_PLAYOFF_STAGE_RANK) return null;
+  const stage = stageKeyFromFootballData(
+    m.stage ?? m.matchStage,
+    m.group ?? null
+  );
+  if (stage.rank < MIN_BETTABLE_STAGE_RANK) return null;
 
   const kickoffAt = m.utcDate ?? m.datetime ?? null;
   if (!kickoffAt) return null;
+
+  if (
+    stage.rank === STAGE_RANK.GROUP &&
+    new Date(kickoffAt) < new Date(GROUP_STAGE_FROM_ISO)
+  ) {
+    return null;
+  }
 
   const homeTeamName =
     m.homeTeam?.name?.trim() || m.homeTeam?.teamName?.trim() || "Уточняется";
@@ -66,7 +91,8 @@ function mapFootballMatchToDbMatch(args: {
     m.awayTeam?.name?.trim() || m.awayTeam?.teamName?.trim() || "Уточняется";
 
   const statusRaw = String(m.status ?? "");
-  const played = isPlayedStatus(statusRaw);
+  const status = mapMatchStatus(statusRaw);
+  const played = status === "PLAYED";
   const score = m.score ?? {};
 
   const homeGoals = extractNumber(
@@ -96,7 +122,7 @@ function mapFootballMatchToDbMatch(args: {
     kickoff_at: kickoffAt,
     home_team_name: homeTeamName,
     away_team_name: awayTeamName,
-    status: played ? "PLAYED" : "SCHEDULED",
+    status,
     home_goals: played ? homeGoals : null,
     away_goals: played ? awayGoals : null,
     home_penalties: played ? homePenalties : null,
@@ -137,7 +163,15 @@ export async function importWorldCupMatches(): Promise<SyncResult> {
     console.warn("teams fetch failed:", e);
   }
 
-  await afterMatchImport({ tournamentTeams });
+  const teamNamesFromMatches = payloads
+    .flatMap((p) => [p.home_team_name, p.away_team_name])
+    .filter((n) => !isPlaceholderTeamName(n));
+
+  const allTeams = [
+    ...new Set([...tournamentTeams, ...teamNamesFromMatches]),
+  ];
+
+  await afterMatchImport({ tournamentTeams: allTeams });
 
   return {
     fetched: footballMatches.length,

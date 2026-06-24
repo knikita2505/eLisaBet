@@ -10,15 +10,7 @@ import {
   syncWorldCupAction,
   updateTeamNameAction,
 } from "@/app/_actions/admin";
-
-function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
+import { formatDateTime } from "@/lib/formatDateTime";
 
 export default async function AdminPage({
   searchParams,
@@ -59,7 +51,7 @@ export default async function AdminPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin/results" className="btn-ghost">
-            Результаты матчей →
+            Редактировать матчи →
           </Link>
           <Link href="/admin/bets" className="btn-outline">
             Ставки всех команд →
@@ -144,7 +136,32 @@ export default async function AdminPage({
 
         <div className="mt-4 flex flex-col gap-3">
           {(teams ?? []).map((t) => (
-            <div key={t.id} className="card-inner">
+            <div key={t.id} className="card-inner relative pr-10">
+              {t.role !== "admin" ? (
+                <form action={deleteTeamAction} className="absolute right-2 top-2">
+                  <input type="hidden" name="teamId" value={t.id} />
+                  <button
+                    type="submit"
+                    aria-label="Удалить команду"
+                    className="rounded-md p-1.5 text-red-300/80 hover:bg-red-500/10 hover:text-red-200"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="h-4 w-4"
+                      aria-hidden
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 9.24A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-9.24.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.492.15l.375 3.75a.75.75 0 101.492-.15l-.375-3.75zm4.34.15a.75.75 0 10-1.492-.15l-.375 3.75a.75.75 0 101.492.15l.375-3.75z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </form>
+              ) : null}
+
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-mono text-accent">{t.code}</span>
                 <span className="text-muted">·</span>
@@ -169,18 +186,6 @@ export default async function AdminPage({
                   Сохранить
                 </button>
               </form>
-
-              {t.role !== "admin" ? (
-                <form action={deleteTeamAction} className="mt-2">
-                  <input type="hidden" name="teamId" value={t.id} />
-                  <button
-                    type="submit"
-                    className="text-xs text-red-300 hover:text-red-200"
-                  >
-                    Удалить команду
-                  </button>
-                </form>
-              ) : null}
             </div>
           ))}
         </div>
