@@ -47,7 +47,7 @@ create trigger trg_tournaments_updated_at
 before update on public.tournaments
 for each row execute function public.set_updated_at();
 
--- Матчи ЧМ (только плей-офф, начиная с 1/16 финала)
+-- Матчи ЧМ (групповой этап с 26.06 + плей-офф)
 create table if not exists public.matches (
   id uuid primary key default gen_random_uuid(),
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
@@ -57,6 +57,7 @@ create table if not exists public.matches (
   stage_rank int not null,
 
   kickoff_at timestamptz not null,
+  bet_locked_at timestamptz,
 
   home_team_name text not null,
   away_team_name text not null,
@@ -196,10 +197,11 @@ create table if not exists public.team_points_ledger (
   unique (team_id, bet_type, bet_id)
 );
 
--- Участники турнира (для спецставок)
+-- Участники турнира (словарь названий для спецставок и отображения)
 create table if not exists public.tournament_teams (
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
   team_name text not null,
+  name_ru text not null,
   primary key (tournament_id, team_name)
 );
 

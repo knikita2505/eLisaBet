@@ -1,6 +1,12 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { exactScoreMatchesBet, matchWinner } from "@/lib/betting/score";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
+
+function countryPickMatches(pick: string, actual: string) {
+  if (pick === actual) return true;
+  return translateTeamToRu(pick) === translateTeamToRu(actual);
+}
 
 type MatchForScoring = {
   id: string;
@@ -107,7 +113,7 @@ export async function awardChampionAndThirdPlace(params: {
       .eq("tournament_id", tournamentId);
 
     for (const b of bets ?? []) {
-      if (b.pick_country !== championName) continue;
+      if (!countryPickMatches(b.pick_country, championName)) continue;
 
       const exists = await ledgerExists(b.team_id, "champion", b.id);
       if (exists) continue;
@@ -130,7 +136,7 @@ export async function awardChampionAndThirdPlace(params: {
       .eq("tournament_id", tournamentId);
 
     for (const b of bets ?? []) {
-      if (b.pick_country !== thirdPlaceName) continue;
+      if (!countryPickMatches(b.pick_country, thirdPlaceName)) continue;
 
       const exists = await ledgerExists(b.team_id, "third_place", b.id);
       if (exists) continue;

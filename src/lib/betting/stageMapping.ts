@@ -1,8 +1,34 @@
 import { STAGE_RANK } from "@/lib/betting/stages";
 
-export function stageKeyFromFootballData(stageRaw: string | null | undefined) {
+function groupLabelFromKey(key: string) {
+  const letter = key.replace(/^GROUP_/i, "");
+  if (letter && letter !== key) return `Группа ${letter}`;
+  return "Групповой этап";
+}
+
+export function stageKeyFromFootballData(
+  stageRaw: string | null | undefined,
+  groupRaw?: string | null
+) {
+  const group = (groupRaw ?? "").toUpperCase();
+  if (group.startsWith("GROUP_")) {
+    return {
+      key: group,
+      label: groupLabelFromKey(group),
+      rank: STAGE_RANK.GROUP,
+    };
+  }
+
   const s = (stageRaw ?? "").toUpperCase();
 
+  if (
+    s === "GROUP_STAGE" ||
+    s === "REGULAR_SEASON" ||
+    s === "LEAGUE_STAGE" ||
+    s.includes("GROUP")
+  ) {
+    return { key: "GROUP_STAGE", label: "Групповой этап", rank: STAGE_RANK.GROUP };
+  }
   if (
     s === "LAST_32" ||
     s === "ROUND_OF_32" ||
@@ -26,17 +52,26 @@ export function stageKeyFromFootballData(stageRaw: string | null | undefined) {
     return { key: "SF", label: "Полуфинал", rank: STAGE_RANK.SF };
   }
   if (s === "THIRD_PLACE" || s.includes("THIRD")) {
-    return { key: "THIRD_PLACE", label: "Матч за 3-е место", rank: STAGE_RANK.THIRD_PLACE };
+    return {
+      key: "THIRD_PLACE",
+      label: "Матч за 3-е место",
+      rank: STAGE_RANK.THIRD_PLACE,
+    };
   }
   if (s === "FINAL") {
     return { key: "FINAL", label: "Финал", rank: STAGE_RANK.FINAL };
   }
 
-  return { key: "UNKNOWN", label: stageRaw ?? "—", rank: 0 };
+  return { key: "UNKNOWN", label: stageRaw ?? "—", rank: -1 };
 }
 
 export function stageLabel(stageKey: string) {
+  if (stageKey.startsWith("GROUP_") && stageKey !== "GROUP_STAGE") {
+    return groupLabelFromKey(stageKey);
+  }
+
   const map: Record<string, string> = {
+    GROUP_STAGE: "Групповой этап",
     R32: "1/16 финала",
     R16: "1/8 финала",
     QF: "1/4 финала",

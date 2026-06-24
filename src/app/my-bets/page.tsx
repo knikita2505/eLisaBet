@@ -2,16 +2,99 @@ import { redirect } from "next/navigation";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { stageLabel } from "@/lib/betting/stageMapping";
+import { groupMatchesForDisplay } from "@/lib/betting/groupMatches";
 import { formatMatchResult } from "@/lib/betting/score";
+import { formatDateTime } from "@/lib/formatDateTime";
+import { displayTeamName } from "@/lib/betting/teamNames";
+import { getMatchDisplayStatus } from "@/lib/betting/matchStatus";
+import { loadTeamTranslations } from "@/lib/db/teamTranslations";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
+import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
 
-function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
+type MatchRow = {
+  id: string;
+  stage: string;
+  stage_rank: number;
+  kickoff_at: string;
+  status: string;
+  home_team_name: string;
+  away_team_name: string;
+  home_goals: number | null;
+  away_goals: number | null;
+  home_penalties: number | null;
+  away_penalties: number | null;
+};
+
+function renderBetMatchCard(
+  matchId: string,
+  matchById: Map<string, MatchRow>,
+  translations: Map<string, string>,
+  outcomeBets: { id: string; match_id: string; selection: "home" | "away" }[],
+  scoreBets: { id: string; match_id: string; home_goals: number; away_goals: number }[],
+  pointsByBet: Map<string, number>
+) {
+  const m = matchById.get(matchId);
+  const outcome = outcomeBets.find((b) => b.match_id === matchId);
+  const score = scoreBets.find((b) => b.match_id === matchId);
+
+  return (
+    <div key={matchId} className="card-inner">
+      {m ? (
+        <>
+          <div className="mt-2 font-semibold">
+            {displayTeamName(m.home_team_name, "home", translations)} —{" "}
+            {displayTeamName(m.away_team_name, "away", translations)}
+          </div>
+          <div className="mt-0.5 text-xs text-muted">
+            {formatDateTime(m.kickoff_at)}
+          </div>
+          {m.status === "PLAYED" ? (
+            <div className="mt-1 text-sm text-muted">
+              Результат:{" "}
+              <span className="text-white/90">{formatMatchResult(m)}</span>
+            </div>
+          ) : (
+            <div className="mt-1">
+              <span
+                className={`badge ${getMatchDisplayStatus(m).badgeClass}`}
+              >
+                {getMatchDisplayStatus(m).label}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-sm text-muted">Матч</div>
+      )}
+
+      <div className="mt-3 space-y-2 text-sm">
+        {outcome ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Исход</span>
+            <span>
+              {outcome.selection === "home"
+                ? displayTeamName(m?.home_team_name ?? "", "home", translations)
+                : displayTeamName(m?.away_team_name ?? "", "away", translations)}
+            </span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
+        {score ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Точный счёт</span>
+            <span>
+              {score.home_goals}:{score.away_goals}
+            </span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export default async function MyBetsPage() {
@@ -19,6 +102,7 @@ export default async function MyBetsPage() {
   if (!team.name) redirect("/onboarding");
 
   const tournamentId = await getActiveTournament();
+  const translations = await loadTeamTranslations(tournamentId);
 
   const { data: outcomeBets } = await supabaseAdmin
     .from("bets_outcome")
@@ -55,12 +139,13 @@ export default async function MyBetsPage() {
     ? await supabaseAdmin
         .from("matches")
         .select(
-          "id,stage,kickoff_at,status,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
+          "id,stage,stage_rank,kickoff_at,status,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
         )
         .in("id", matchIds)
+        .order("kickoff_at", { ascending: true })
     : { data: [] };
 
-  const matchById = new Map((matches ?? []).map((m) => [m.id, m]));
+  const matchById = new Map((matches ?? []).map((m) => [m.id, m as MatchRow]));
 
   const { data: ledger } = await supabaseAdmin
     .from("team_points_ledger")
@@ -74,6 +159,9 @@ export default async function MyBetsPage() {
   }
 
   const totalPoints = (ledger ?? []).reduce((sum, r) => sum + r.points, 0);
+
+  const matchesWithBets = (matches ?? []) as MatchRow[];
+  const displayGroups = groupMatchesForDisplay(matchesWithBets);
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,7 +182,10 @@ export default async function MyBetsPage() {
           <div className="flex justify-between gap-4 border-b border-white/8 pb-3">
             <span className="text-muted">Победитель ЧМ</span>
             <span>
-              {championBet?.pick_country ?? "—"}
+              {championBet?.pick_country
+                ? (translations.get(championBet.pick_country) ??
+                  translateTeamToRu(championBet.pick_country))
+                : "—"}
               {championBet ? (
                 <span className="ml-2 points-value">
                   +{pointsByBet.get(`champion:${championBet.id}`) ?? 0}
@@ -105,7 +196,10 @@ export default async function MyBetsPage() {
           <div className="flex justify-between gap-4">
             <span className="text-muted">3-е место</span>
             <span>
-              {thirdBet?.pick_country ?? "—"}
+              {thirdBet?.pick_country
+                ? (translations.get(thirdBet.pick_country) ??
+                  translateTeamToRu(thirdBet.pick_country))
+                : "—"}
               {thirdBet ? (
                 <span className="ml-2 points-value">
                   +{pointsByBet.get(`third_place:${thirdBet.id}`) ?? 0}
@@ -124,67 +218,60 @@ export default async function MyBetsPage() {
             Пока нет ставок. Перейдите в раздел «Матчи».
           </p>
         ) : (
-          <div className="mt-4 flex flex-col gap-3">
-            {matchIds.map((matchId) => {
-              const m = matchById.get(matchId);
-              const outcome = outcomeBets?.find((b) => b.match_id === matchId);
-              const score = scoreBets?.find((b) => b.match_id === matchId);
+          <div className="mt-4 flex flex-col gap-4">
+            {displayGroups.map((group) => {
+              if (group.type === "groups") {
+                const totalCount = group.children.reduce(
+                  (sum, child) => sum + child.matches.length,
+                  0
+                );
+
+                return (
+                  <CollapsibleStage
+                    key="groups"
+                    title={group.label}
+                    count={totalCount}
+                  >
+                    {group.children.map((child) => (
+                      <CollapsibleStage
+                        key={child.stageKey}
+                        title={child.label}
+                        count={child.matches.length}
+                        variant="nested"
+                      >
+                        {child.matches.map((m) =>
+                          renderBetMatchCard(
+                            m.id,
+                            matchById,
+                            translations,
+                            outcomeBets ?? [],
+                            scoreBets ?? [],
+                            pointsByBet
+                          )
+                        )}
+                      </CollapsibleStage>
+                    ))}
+                  </CollapsibleStage>
+                );
+              }
 
               return (
-                <div key={matchId} className="card-inner">
-                  {m ? (
-                    <>
-                      <span className="badge badge-type">{stageLabel(m.stage)}</span>
-                      <div className="mt-2 font-semibold">
-                        {m.home_team_name} — {m.away_team_name}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted">
-                        {formatDateTime(m.kickoff_at)}
-                      </div>
-                      {m.status === "PLAYED" ? (
-                        <div className="mt-1 text-sm text-muted">
-                          Результат:{" "}
-                          <span className="text-white/90">
-                            {formatMatchResult(m)}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="mt-1">
-                          <span className="badge badge-open">Ожидается</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-sm text-muted">Матч</div>
+                <CollapsibleStage
+                  key={group.stageKey}
+                  title={group.label}
+                  count={group.matches.length}
+                >
+                  {group.matches.map((m) =>
+                    renderBetMatchCard(
+                      m.id,
+                      matchById,
+                      translations,
+                      outcomeBets ?? [],
+                      scoreBets ?? [],
+                      pointsByBet
+                    )
                   )}
-
-                  <div className="mt-3 space-y-2 text-sm">
-                    {outcome ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="badge badge-type">Исход</span>
-                        <span>
-                          {outcome.selection === "home"
-                            ? m?.home_team_name ?? "дома"
-                            : m?.away_team_name ?? "гости"}
-                        </span>
-                        <span className="points-value">
-                          +{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0}
-                        </span>
-                      </div>
-                    ) : null}
-                    {score ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="badge badge-type">Точный счёт</span>
-                        <span>
-                          {score.home_goals}:{score.away_goals}
-                        </span>
-                        <span className="points-value">
-                          +{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
+                </CollapsibleStage>
               );
             })}
           </div>

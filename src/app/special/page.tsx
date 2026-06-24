@@ -6,17 +6,8 @@ import {
   setChampionBetAction,
   setThirdPlaceBetAction,
 } from "@/app/_actions/special";
-
-function formatTime(iso: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
+import { formatTime } from "@/lib/formatDateTime";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
 
 export default async function SpecialPage() {
   const team = await requireSessionTeam();
@@ -54,12 +45,14 @@ export default async function SpecialPage() {
 
   const { data: tournamentTeams } = await supabaseAdmin
     .from("tournament_teams")
-    .select("team_name")
+    .select("team_name,name_ru")
     .eq("tournament_id", tournamentId);
 
-  const options = new Set<string>();
+  const options = new Map<string, string>();
   for (const r of tournamentTeams ?? []) {
-    if (r.team_name && r.team_name !== "Уточняется") options.add(r.team_name);
+    if (r.team_name && r.team_name !== "Уточняется") {
+      options.set(r.team_name, r.name_ru || translateTeamToRu(r.team_name));
+    }
   }
 
   if (!options.size) {
@@ -70,15 +63,23 @@ export default async function SpecialPage() {
 
     for (const r of matchTeams ?? []) {
       if (r.home_team_name && r.home_team_name !== "Уточняется") {
-        options.add(r.home_team_name);
+        options.set(
+          r.home_team_name,
+          translateTeamToRu(r.home_team_name)
+        );
       }
       if (r.away_team_name && r.away_team_name !== "Уточняется") {
-        options.add(r.away_team_name);
+        options.set(
+          r.away_team_name,
+          translateTeamToRu(r.away_team_name)
+        );
       }
     }
   }
 
-  const teamList = Array.from(options).sort((a, b) => a.localeCompare(b, "ru"));
+  const teamList = Array.from(options.entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, "ru"));
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,8 +126,8 @@ export default async function SpecialPage() {
                 — выберите —
               </option>
               {teamList.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+                <option key={t.value} value={t.value}>
+                  {t.label}
                 </option>
               ))}
             </select>
@@ -173,8 +174,8 @@ export default async function SpecialPage() {
                 — выберите —
               </option>
               {teamList.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+                <option key={t.value} value={t.value}>
+                  {t.label}
                 </option>
               ))}
             </select>

@@ -1,7 +1,8 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { MIN_PLAYOFF_STAGE_RANK, STAGE_RANK } from "@/lib/betting/stages";
+import { translateTeamToRu } from "@/lib/football/teamTranslations";
+import { MIN_BETTABLE_STAGE_RANK, STAGE_RANK } from "@/lib/betting/stages";
 import {
   awardChampionAndThirdPlace,
   awardPointsForPlayedMatch,
@@ -51,6 +52,7 @@ export async function afterMatchImport(args: {
           args.tournamentTeams.map((name) => ({
             tournament_id: tournamentId,
             team_name: name,
+            name_ru: translateTeamToRu(name),
           })),
           { onConflict: "tournament_id,team_name" }
         );
@@ -96,7 +98,7 @@ export async function recalculateTournamentPoints(): Promise<RecalculateResult> 
       "id,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties,status"
     )
     .eq("tournament_id", tournamentId)
-    .gte("stage_rank", MIN_PLAYOFF_STAGE_RANK)
+    .gte("stage_rank", MIN_BETTABLE_STAGE_RANK)
     .eq("status", "PLAYED");
 
   let pointsAwarded = 0;
