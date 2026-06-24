@@ -15,7 +15,7 @@ function ChevronIcon({ open }: { open: boolean }) {
         strokeWidth={2.5}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={`h-5 w-5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        className={`h-5 w-5 transition-transform duration-200 ${open ? "rotate-0" : "-rotate-90"}`}
       >
         <path d="M6 9l6 6 6-6" />
       </svg>

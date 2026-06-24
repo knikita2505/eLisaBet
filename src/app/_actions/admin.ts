@@ -274,3 +274,68 @@ export async function deleteBetAction(formData: FormData) {
 
   redirect("/admin/bets?deleted=1");
 }
+
+export async function deleteMatchBetsAction(formData: FormData) {
+  await requireAdmin();
+
+  const teamId = formData.get("teamId");
+  const matchId = formData.get("matchId");
+
+  if (typeof teamId !== "string" || !teamId || typeof matchId !== "string" || !matchId) {
+    redirect("/admin/bets?error=invalid");
+  }
+
+  const { data: outcomeBet } = await supabaseAdmin
+    .from("bets_outcome")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("match_id", matchId)
+    .maybeSingle();
+
+  const { data: scoreBet } = await supabaseAdmin
+    .from("bets_exact_score")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("match_id", matchId)
+    .maybeSingle();
+
+  if (!outcomeBet && !scoreBet) {
+    redirect("/admin/bets?error=invalid");
+  }
+
+  if (outcomeBet) {
+    await supabaseAdmin
+      .from("team_points_ledger")
+      .delete()
+      .eq("bet_type", "match_outcome")
+      .eq("bet_id", outcomeBet.id);
+
+    const { error } = await supabaseAdmin
+      .from("bets_outcome")
+      .delete()
+      .eq("id", outcomeBet.id);
+
+    if (error) {
+      redirect(`/admin/bets?error=${encodeURIComponent(error.message)}`);
+    }
+  }
+
+  if (scoreBet) {
+    await supabaseAdmin
+      .from("team_points_ledger")
+      .delete()
+      .eq("bet_type", "match_exact_score")
+      .eq("bet_id", scoreBet.id);
+
+    const { error } = await supabaseAdmin
+      .from("bets_exact_score")
+      .delete()
+      .eq("id", scoreBet.id);
+
+    if (error) {
+      redirect(`/admin/bets?error=${encodeURIComponent(error.message)}`);
+    }
+  }
+
+  redirect("/admin/bets?deleted=1");
+}

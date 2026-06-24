@@ -12,8 +12,11 @@ import { displayTeamName } from "@/lib/betting/teamNames";
 import { formatMatchResult } from "@/lib/betting/score";
 import { formatDateTime } from "@/lib/formatDateTime";
 import { loadTeamTranslations } from "@/lib/db/teamTranslations";
-import { MatchBetForm } from "@/app/matches/MatchBetForm";
-import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
+import {
+  MatchesBetBoard,
+  type MatchBetItem,
+  type MatchesDisplayGroup,
+} from "@/app/matches/MatchesBetBoard";
 
 type MatchRow = {
   id: string;
@@ -29,64 +32,6 @@ type MatchRow = {
   home_penalties: number | null;
   away_penalties: number | null;
 };
-
-function renderMatchCard(
-  m: MatchRow,
-  translations: Map<string, string>,
-  outcomeByMatch: Map<string, "home" | "away">,
-  scoreByMatch: Map<string, { home_goals: number; away_goals: number }>
-) {
-  const locked = !isBettingOpen(m);
-  const selection = outcomeByMatch.get(m.id) ?? null;
-  const score = scoreByMatch.get(m.id);
-  const homeLabel = displayTeamName(m.home_team_name, "home", translations);
-  const awayLabel = displayTeamName(m.away_team_name, "away", translations);
-  const displayStatus = getMatchDisplayStatus(m);
-  const betDeadline = m.bet_locked_at ?? m.kickoff_at;
-
-  return (
-    <section key={m.id} className="card-inner">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold tracking-tight">
-            {homeLabel}
-            <span className="mx-2 font-normal text-muted">—</span>
-            {awayLabel}
-          </h3>
-          <p className="mt-1 text-sm text-muted">{formatDateTime(m.kickoff_at)}</p>
-          {m.status === "PLAYED" ? (
-            <p className="mt-1 text-sm text-muted">
-              Результат:{" "}
-              <span className="text-white/90">{formatMatchResult(m)}</span>
-            </p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
-          <span className={`badge ${displayStatus.badgeClass}`}>
-            {displayStatus.label}
-          </span>
-          {locked ? (
-            <span className="badge badge-closed">Закрыто</span>
-          ) : (
-            <span className="badge badge-open">
-              Можно ставить до {formatDateTime(betDeadline)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <MatchBetForm
-        matchId={m.id}
-        homeTeamName={homeLabel}
-        awayTeamName={awayLabel}
-        locked={locked}
-        initialSelection={selection}
-        initialHomeGoals={score?.home_goals ?? 0}
-        initialAwayGoals={score?.away_goals ?? 0}
-      />
-    </section>
-  );
-}
 
 export default async function MatchesPage({
   searchParams,
@@ -141,20 +86,61 @@ export default async function MatchesPage({
   );
   const scoreByMatch = new Map(scoreBets.map((b) => [b.match_id, b]));
 
-  const displayGroups = groupMatchesForDisplay(matches);
+  const matchesById: Record<string, MatchBetItem> = {};
+  for (const m of matches) {
+    const homeLabel = displayTeamName(m.home_team_name, "home", translations);
+    const awayLabel = displayTeamName(m.away_team_name, "away", translations);
+    const displayStatus = getMatchDisplayStatus(m);
+    const score = scoreByMatch.get(m.id);
 
-  function stageBetsComplete(matchIds: string[]) {
-    if (!matchIds.length) return true;
-    return matchIds.every((id) => outcomeByMatch.has(id));
+    matchesById[m.id] = {
+      id: m.id,
+      homeLabel,
+      awayLabel,
+      kickoffLabel: formatDateTime(m.kickoff_at),
+      statusLabel: displayStatus.label,
+      statusBadgeClass: displayStatus.badgeClass,
+      locked: !isBettingOpen(m),
+      betDeadlineLabel: formatDateTime(m.bet_locked_at ?? m.kickoff_at),
+      resultLabel: m.status === "PLAYED" ? formatMatchResult(m) : null,
+      initialSelection: outcomeByMatch.get(m.id) ?? null,
+      initialHomeGoals: score?.home_goals ?? 0,
+      initialAwayGoals: score?.away_goals ?? 0,
+    };
   }
+
+  const displayGroups: MatchesDisplayGroup[] = groupMatchesForDisplay(
+    matches
+  ).map((group) => {
+    if (group.type === "groups") {
+      return {
+        type: "groups" as const,
+        label: group.label,
+        children: group.children.map((child) => ({
+          stageKey: child.stageKey,
+          label: child.label,
+          matchIds: child.matches.map((m) => m.id),
+        })),
+      };
+    }
+
+    return {
+      type: "stage" as const,
+      stageKey: group.stageKey,
+      label: group.label,
+      matchIds: group.matches.map((m) => m.id),
+    };
+  });
+
+  const savedOutcomeByMatch = Object.fromEntries(outcomeByMatch);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="page-title">Матчи и ставки</h1>
         <p className="page-desc">
-          Выберите исход и точный счёт, затем нажмите «Сохранить ставки».
-          Групповой этап — матчи с 26 июня.
+          Выберите исход и точный счёт по матчам, затем нажмите «Сохранить
+          ставки» внизу экрана. Групповой этап — матчи с 26 июня.
         </p>
       </div>
 
@@ -164,72 +150,22 @@ export default async function MatchesPage({
       {params.locked ? (
         <div className="alert-error">Приём ставок на этот матч закрыт.</div>
       ) : null}
-      {params.error ? (
+      {params.error === "conflict" ? (
+        <div className="alert-error">
+          Не удалось сохранить: счёт на табло противоречит выбранному исходу.
+        </div>
+      ) : params.error ? (
         <div className="alert-error">
           Не удалось сохранить. Проверьте, что выбран исход.
         </div>
       ) : null}
 
       {displayGroups.length ? (
-        displayGroups.map((group) => {
-          if (group.type === "groups") {
-            const totalCount = group.children.reduce(
-              (sum, child) => sum + child.matches.length,
-              0
-            );
-            const allGroupMatchIds = group.children.flatMap((child) =>
-              child.matches.map((m) => m.id)
-            );
-
-            return (
-              <CollapsibleStage
-                key="groups"
-                title={group.label}
-                count={totalCount}
-                betsComplete={stageBetsComplete(allGroupMatchIds)}
-              >
-                {group.children.map((child) => (
-                  <CollapsibleStage
-                    key={child.stageKey}
-                    title={child.label}
-                    count={child.matches.length}
-                    variant="nested"
-                    betsComplete={stageBetsComplete(
-                      child.matches.map((m) => m.id)
-                    )}
-                  >
-                    {child.matches.map((m) =>
-                      renderMatchCard(
-                        m,
-                        translations,
-                        outcomeByMatch,
-                        scoreByMatch
-                      )
-                    )}
-                  </CollapsibleStage>
-                ))}
-              </CollapsibleStage>
-            );
-          }
-
-          return (
-            <CollapsibleStage
-              key={group.stageKey}
-              title={group.label}
-              count={group.matches.length}
-              betsComplete={stageBetsComplete(group.matches.map((m) => m.id))}
-            >
-              {group.matches.map((m) =>
-                renderMatchCard(
-                  m,
-                  translations,
-                  outcomeByMatch,
-                  scoreByMatch
-                )
-              )}
-            </CollapsibleStage>
-          );
-        })
+        <MatchesBetBoard
+          displayGroups={displayGroups}
+          matchesById={matchesById}
+          savedOutcomeByMatch={savedOutcomeByMatch}
+        />
       ) : (
         <div className="card-padded text-muted">
           Пока нет данных матчей. Админу нужно синхронизировать расписание.

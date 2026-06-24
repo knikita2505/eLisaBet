@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { MIN_BETTABLE_STAGE_RANK } from "@/lib/betting/stages";
 import { isBettingOpen } from "@/lib/betting/matchStatus";
+import { getOutcomeScoreConflictMessage } from "@/lib/betting/betValidation";
 
 function toInt(v: FormDataEntryValue | null): number | null {
   if (typeof v !== "string") return null;
@@ -53,6 +54,21 @@ export async function setMatchBetsAction(formData: FormData) {
   const match = await assertMatchOpenForBets(matchId);
   if (!match) redirect("/matches?locked=1");
 
+  const { data: matchRow } = await supabaseAdmin
+    .from("matches")
+    .select("home_team_name,away_team_name")
+    .eq("id", matchId)
+    .maybeSingle();
+
+  const conflict = getOutcomeScoreConflictMessage(
+    selection,
+    homeGoals,
+    awayGoals,
+    matchRow?.home_team_name ?? "Команда 1",
+    matchRow?.away_team_name ?? "Команда 2"
+  );
+  if (conflict) redirect("/matches?error=conflict");
+
   const { error: outcomeError } = await supabaseAdmin.from("bets_outcome").upsert(
     {
       team_id: team.teamId,
@@ -79,5 +95,106 @@ export async function setMatchBetsAction(formData: FormData) {
     );
 
   if (scoreError) redirect("/matches?error=1");
+  redirect("/matches?saved=1");
+}
+
+type BulkBetPayload = {
+  matchId: string;
+  selection: "home" | "away" | null;
+  homeGoals: number;
+  awayGoals: number;
+};
+
+export async function setAllMatchBetsAction(formData: FormData) {
+  const team = await requireSessionTeam();
+
+  const raw = formData.get("bets");
+  if (typeof raw !== "string") redirect("/matches?error=1");
+
+  let bets: BulkBetPayload[];
+  try {
+    bets = JSON.parse(raw) as BulkBetPayload[];
+  } catch {
+    redirect("/matches?error=1");
+  }
+
+  if (!Array.isArray(bets) || !bets.length) redirect("/matches?error=1");
+
+  for (const bet of bets) {
+    if (!bet.matchId) redirect("/matches?error=1");
+
+    if (
+      bet.selection !== null &&
+      bet.selection !== "home" &&
+      bet.selection !== "away"
+    ) {
+      redirect("/matches?error=1");
+    }
+
+    if (
+      typeof bet.homeGoals !== "number" ||
+      typeof bet.awayGoals !== "number" ||
+      bet.homeGoals < 0 ||
+      bet.homeGoals > 10 ||
+      bet.awayGoals < 0 ||
+      bet.awayGoals > 10
+    ) {
+      redirect("/matches?error=1");
+    }
+
+    if (bet.selection === "home" || bet.selection === "away") {
+      const { data: matchRow } = await supabaseAdmin
+        .from("matches")
+        .select("home_team_name,away_team_name")
+        .eq("id", bet.matchId)
+        .maybeSingle();
+
+      const conflict = getOutcomeScoreConflictMessage(
+        bet.selection,
+        bet.homeGoals,
+        bet.awayGoals,
+        matchRow?.home_team_name ?? "Команда 1",
+        matchRow?.away_team_name ?? "Команда 2"
+      );
+      if (conflict) redirect("/matches?error=conflict");
+    }
+  }
+
+  for (const bet of bets) {
+    const match = await assertMatchOpenForBets(bet.matchId);
+    if (!match) continue;
+
+    if (bet.selection === "home" || bet.selection === "away") {
+      const { error: outcomeError } = await supabaseAdmin
+        .from("bets_outcome")
+        .upsert(
+          {
+            team_id: team.teamId,
+            match_id: bet.matchId,
+            selection: bet.selection,
+          },
+          { onConflict: "team_id,match_id" }
+        );
+
+      if (outcomeError) redirect("/matches?error=1");
+    }
+
+    const { error: scoreError } = await supabaseAdmin
+      .from("bets_exact_score")
+      .upsert(
+        {
+          team_id: team.teamId,
+          match_id: bet.matchId,
+          home_goals: bet.homeGoals,
+          away_goals: bet.awayGoals,
+          home_penalties: null,
+          away_penalties: null,
+        },
+        { onConflict: "team_id,match_id" }
+      );
+
+    if (scoreError) redirect("/matches?error=1");
+  }
+
   redirect("/matches?saved=1");
 }

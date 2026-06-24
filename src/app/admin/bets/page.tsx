@@ -3,81 +3,170 @@ import { redirect } from "next/navigation";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { stageLabel } from "@/lib/betting/stageMapping";
-import { STAGE_RANK } from "@/lib/betting/stages";
+import { groupMatchesForDisplay } from "@/lib/betting/groupMatches";
+import { formatMatchResult } from "@/lib/betting/score";
+import { formatDateTime } from "@/lib/formatDateTime";
 import { displayTeamName } from "@/lib/betting/teamNames";
+import { getMatchDisplayStatus } from "@/lib/betting/matchStatus";
 import { loadTeamTranslations } from "@/lib/db/teamTranslations";
 import { translateTeamToRu } from "@/lib/football/teamTranslations";
-import { deleteBetAction } from "@/app/_actions/admin";
+import { deleteBetAction, deleteMatchBetsAction } from "@/app/_actions/admin";
+import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
 
-type BetType =
-  | "match_outcome"
-  | "match_exact_score"
-  | "champion"
-  | "third_place";
-
-type AdminBetItem = {
-  id: string;
-  betType: BetType;
-  kindLabel: string;
-  stageKey: string | null;
-  stageRank: number;
-  matchLabel: string | null;
-  pick: string;
-  points: number;
-};
-
-type TeamBetsView = {
-  teamId: string;
-  teamName: string;
-  code: string;
-  special: AdminBetItem[];
-  byStage: { stageKey: string; stageRank: number; bets: AdminBetItem[] }[];
-};
-
-function betKindLabel(betType: BetType) {
-  const map: Record<BetType, string> = {
-    match_outcome: "Исход",
-    match_exact_score: "Точный счёт",
-    champion: "Победитель ЧМ",
-    third_place: "3-е место",
-  };
-  return map[betType];
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
 }
 
-function AdminBetRow({ bet }: { bet: AdminBetItem }) {
+function AdminBetDeleteForm({
+  betType,
+  betId,
+}: {
+  betType: string;
+  betId: string;
+}) {
   return (
-    <div className="card-inner flex items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-type">{bet.kindLabel}</span>
-          {bet.matchLabel ? (
-            <span className="text-sm font-medium text-white/90">
-              {bet.matchLabel}
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-1.5 text-sm">
-          <span className="text-muted">Ставка: </span>
-          <span className="text-white/90">{bet.pick}</span>
-          {bet.points > 0 ? (
-            <span className="points-value ml-2">+{bet.points} очк.</span>
-          ) : (
-            <span className="ml-2 text-muted">0 очк.</span>
-          )}
-        </div>
-      </div>
+    <form action={deleteBetAction} className="shrink-0">
+      <input type="hidden" name="betType" value={betType} />
+      <input type="hidden" name="betId" value={betId} />
+      <button
+        type="submit"
+        className="rounded-lg p-1.5 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+        aria-label="Удалить ставку"
+      >
+        <TrashIcon />
+      </button>
+    </form>
+  );
+}
 
-      <form action={deleteBetAction} className="shrink-0">
-        <input type="hidden" name="betType" value={bet.betType} />
-        <input type="hidden" name="betId" value={bet.id} />
-        <button
-          type="submit"
-          className="text-xs text-red-300 hover:text-red-200"
-        >
-          Удалить
-        </button>
-      </form>
+function AdminMatchBetsDeleteForm({
+  teamId,
+  matchId,
+}: {
+  teamId: string;
+  matchId: string;
+}) {
+  return (
+    <form action={deleteMatchBetsAction} className="shrink-0">
+      <input type="hidden" name="teamId" value={teamId} />
+      <input type="hidden" name="matchId" value={matchId} />
+      <button
+        type="submit"
+        className="rounded-lg p-1.5 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+        aria-label="Удалить ставку на матч"
+      >
+        <TrashIcon />
+      </button>
+    </form>
+  );
+}
+
+type MatchRow = {
+  id: string;
+  stage: string;
+  stage_rank: number;
+  kickoff_at: string;
+  status: string;
+  home_team_name: string;
+  away_team_name: string;
+  home_goals: number | null;
+  away_goals: number | null;
+  home_penalties: number | null;
+  away_penalties: number | null;
+};
+
+function renderAdminBetMatchCard(
+  teamId: string,
+  matchId: string,
+  matchById: Map<string, MatchRow>,
+  translations: Map<string, string>,
+  outcomeBets: { id: string; match_id: string; selection: "home" | "away" }[],
+  scoreBets: { id: string; match_id: string; home_goals: number; away_goals: number }[],
+  pointsByBet: Map<string, number>
+) {
+  const m = matchById.get(matchId);
+  const outcome = outcomeBets.find((b) => b.match_id === matchId);
+  const score = scoreBets.find((b) => b.match_id === matchId);
+
+  return (
+    <div key={matchId} className="card-inner relative">
+      {(outcome || score) ? (
+        <div className="absolute right-2 top-2">
+          <AdminMatchBetsDeleteForm teamId={teamId} matchId={matchId} />
+        </div>
+      ) : null}
+
+      {m ? (
+        <>
+          <div className="pr-10 font-semibold">
+            {displayTeamName(m.home_team_name, "home", translations)} —{" "}
+            {displayTeamName(m.away_team_name, "away", translations)}
+          </div>
+          <div className="mt-0.5 text-xs text-muted">
+            {formatDateTime(m.kickoff_at)}
+          </div>
+          {m.status === "PLAYED" ? (
+            <div className="mt-1 text-sm text-muted">
+              Результат:{" "}
+              <span className="text-white/90">{formatMatchResult(m)}</span>
+            </div>
+          ) : (
+            <div className="mt-1">
+              <span
+                className={`badge ${getMatchDisplayStatus(m).badgeClass}`}
+              >
+                {getMatchDisplayStatus(m).label}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-sm text-muted">Матч</div>
+      )}
+
+      <div className="mt-3 space-y-2 text-sm">
+        {outcome ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Исход</span>
+            <span>
+              {outcome.selection === "home"
+                ? displayTeamName(m?.home_team_name ?? "", "home", translations)
+                : displayTeamName(m?.away_team_name ?? "", "away", translations)}
+            </span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_outcome:${outcome.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
+        {score ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Точный счёт</span>
+            <span>
+              {score.home_goals}:{score.away_goals}
+            </span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_exact_score:${score.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -106,7 +195,6 @@ export default async function AdminBetsPage({
     { data: scoreBets },
     { data: championBets },
     { data: thirdBets },
-    { data: matches },
     { data: ledger },
   ] = await Promise.all([
     supabaseAdmin.from("bets_outcome").select("id,team_id,match_id,selection"),
@@ -122,129 +210,89 @@ export default async function AdminBetsPage({
       .select("id,team_id,pick_country")
       .eq("tournament_id", tournamentId),
     supabaseAdmin
-      .from("matches")
-      .select("id,stage,stage_rank,home_team_name,away_team_name,kickoff_at"),
-    supabaseAdmin
       .from("team_points_ledger")
       .select("team_id,bet_type,bet_id,points")
       .eq("tournament_id", tournamentId),
   ]);
 
-  const matchById = new Map((matches ?? []).map((m) => [m.id, m]));
   const pointsByBet = new Map<string, number>();
   for (const row of ledger ?? []) {
     pointsByBet.set(`${row.bet_type}:${row.bet_id}`, row.points);
   }
 
-  const byTeam = new Map<
-    string,
-    { special: AdminBetItem[]; matchBets: AdminBetItem[] }
-  >();
+  const teamIdsWithBets = new Set<string>([
+    ...(outcomeBets ?? []).map((b) => b.team_id),
+    ...(scoreBets ?? []).map((b) => b.team_id),
+    ...(championBets ?? []).map((b) => b.team_id),
+    ...(thirdBets ?? []).map((b) => b.team_id),
+  ]);
 
-  function ensureTeam(teamId: string) {
-    if (!byTeam.has(teamId)) {
-      byTeam.set(teamId, { special: [], matchBets: [] });
-    }
-    return byTeam.get(teamId)!;
-  }
+  const allMatchIds = [
+    ...new Set([
+      ...(outcomeBets ?? []).map((b) => b.match_id),
+      ...(scoreBets ?? []).map((b) => b.match_id),
+    ]),
+  ];
 
-  for (const b of championBets ?? []) {
-    const row = ensureTeam(b.team_id);
-    row.special.push({
-      id: b.id,
-      betType: "champion",
-      kindLabel: betKindLabel("champion"),
-      stageKey: null,
-      stageRank: 0,
-      matchLabel: null,
-      pick: translateTeamToRu(b.pick_country),
-      points: pointsByBet.get(`champion:${b.id}`) ?? 0,
-    });
-  }
+  const { data: allMatches } = allMatchIds.length
+    ? await supabaseAdmin
+        .from("matches")
+        .select(
+          "id,stage,stage_rank,kickoff_at,status,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
+        )
+        .in("id", allMatchIds)
+    : { data: [] };
 
-  for (const b of thirdBets ?? []) {
-    const row = ensureTeam(b.team_id);
-    row.special.push({
-      id: b.id,
-      betType: "third_place",
-      kindLabel: betKindLabel("third_place"),
-      stageKey: null,
-      stageRank: 0,
-      matchLabel: null,
-      pick: translateTeamToRu(b.pick_country),
-      points: pointsByBet.get(`third_place:${b.id}`) ?? 0,
-    });
-  }
+  const matchById = new Map(
+    (allMatches ?? []).map((m) => [m.id, m as MatchRow])
+  );
 
-  for (const b of outcomeBets ?? []) {
-    const m = matchById.get(b.match_id);
-    const row = ensureTeam(b.team_id);
-    const pick =
-      b.selection === "home"
-        ? displayTeamName(m?.home_team_name ?? "", "home", translations)
-        : displayTeamName(m?.away_team_name ?? "", "away", translations);
-    row.matchBets.push({
-      id: b.id,
-      betType: "match_outcome",
-      kindLabel: betKindLabel("match_outcome"),
-      stageKey: m?.stage ?? null,
-      stageRank: m?.stage_rank ?? STAGE_RANK.R32,
-      matchLabel: m
-        ? `${displayTeamName(m.home_team_name, "home", translations)} — ${displayTeamName(m.away_team_name, "away", translations)}`
-        : "Матч",
-      pick,
-      points: pointsByBet.get(`match_outcome:${b.id}`) ?? 0,
-    });
-  }
-
-  for (const b of scoreBets ?? []) {
-    const m = matchById.get(b.match_id);
-    const row = ensureTeam(b.team_id);
-    row.matchBets.push({
-      id: b.id,
-      betType: "match_exact_score",
-      kindLabel: betKindLabel("match_exact_score"),
-      stageKey: m?.stage ?? null,
-      stageRank: m?.stage_rank ?? STAGE_RANK.R32,
-      matchLabel: m
-        ? `${displayTeamName(m.home_team_name, "home", translations)} — ${displayTeamName(m.away_team_name, "away", translations)}`
-        : "Матч",
-      pick: `${b.home_goals}:${b.away_goals}`,
-      points: pointsByBet.get(`match_exact_score:${b.id}`) ?? 0,
-    });
-  }
-
-  const sorted: TeamBetsView[] = Array.from(byTeam.entries())
-    .map(([teamId, data]) => {
+  const teamsView = [...teamIdsWithBets]
+    .map((teamId) => {
       const t = teamById.get(teamId);
-      const stageMap = new Map<string, AdminBetItem[]>();
+      const teamOutcomeBets = (outcomeBets ?? []).filter(
+        (b) => b.team_id === teamId
+      );
+      const teamScoreBets = (scoreBets ?? []).filter(
+        (b) => b.team_id === teamId
+      );
+      const championBet =
+        (championBets ?? []).find((b) => b.team_id === teamId) ?? null;
+      const thirdBet =
+        (thirdBets ?? []).find((b) => b.team_id === teamId) ?? null;
 
-      for (const bet of data.matchBets) {
-        const key = bet.stageKey ?? "UNKNOWN";
-        if (!stageMap.has(key)) stageMap.set(key, []);
-        stageMap.get(key)!.push(bet);
-      }
+      const matchIds = [
+        ...new Set([
+          ...teamOutcomeBets.map((b) => b.match_id),
+          ...teamScoreBets.map((b) => b.match_id),
+        ]),
+      ];
 
-      const byStage = Array.from(stageMap.entries())
-        .map(([stageKey, bets]) => ({
-          stageKey,
-          stageRank: bets[0]?.stageRank ?? 0,
-          bets: bets.sort((a, b) => {
-            if (a.betType === b.betType) return 0;
-            return a.betType === "match_outcome" ? -1 : 1;
-          }),
-        }))
-        .sort((a, b) => a.stageRank - b.stageRank);
+      const matches = matchIds
+        .map((id) => matchById.get(id))
+        .filter((m): m is MatchRow => Boolean(m))
+        .sort(
+          (a, b) =>
+            new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime()
+        );
+
+      const displayGroups = groupMatchesForDisplay(matches);
+      const matchCardCount = matchIds.length;
+      const specialCount = (championBet ? 1 : 0) + (thirdBet ? 1 : 0);
 
       return {
         teamId,
         teamName: t?.name ?? "—",
         code: t?.code ?? "—",
-        special: data.special,
-        byStage,
+        championBet,
+        thirdBet,
+        teamOutcomeBets,
+        teamScoreBets,
+        displayGroups,
+        totalCount: matchCardCount + specialCount,
       };
     })
-    .filter((t) => t.special.length > 0 || t.byStage.length > 0)
+    .filter((t) => t.totalCount > 0)
     .sort((a, b) => a.teamName.localeCompare(b.teamName, "ru"));
 
   return (
@@ -266,46 +314,138 @@ export default async function AdminBetsPage({
         <div className="alert-error">{decodeURIComponent(params.error)}</div>
       ) : null}
 
-      {sorted.length ? (
-        sorted.map((t) => (
-          <section key={t.teamId} className="card-padded">
-            <h2 className="text-lg font-semibold">
-              {t.teamName}{" "}
-              <span className="text-sm font-normal font-mono text-muted">
-                ({t.code})
-              </span>
-            </h2>
-
-            {t.special.length ? (
-              <div className="mt-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                  Спецставки
-                </h3>
-                <div className="mt-2 flex flex-col gap-2">
-                  {t.special.map((bet) => (
-                    <AdminBetRow key={`${bet.betType}:${bet.id}`} bet={bet} />
-                  ))}
+      {teamsView.length ? (
+        teamsView.map((team) => (
+          <CollapsibleStage
+            key={team.teamId}
+            title={`${team.teamName} (${team.code})`}
+            count={team.totalCount}
+          >
+            {(team.championBet || team.thirdBet) && (
+              <section className="card-inner">
+                <h3 className="section-title">Спецставки</h3>
+                <div className="mt-4 flex flex-col gap-3 text-sm">
+                  <div className="flex items-center justify-between gap-4 border-b border-white/8 pb-3">
+                    <span className="text-muted">Победитель ЧМ</span>
+                    <div className="flex items-center gap-3">
+                      <span>
+                        {team.championBet?.pick_country
+                          ? (translations.get(team.championBet.pick_country) ??
+                            translateTeamToRu(team.championBet.pick_country))
+                          : "—"}
+                        {team.championBet ? (
+                          <span className="ml-2 points-value">
+                            +
+                            {pointsByBet.get(
+                              `champion:${team.championBet.id}`
+                            ) ?? 0}
+                          </span>
+                        ) : null}
+                      </span>
+                      {team.championBet ? (
+                        <AdminBetDeleteForm
+                          betType="champion"
+                          betId={team.championBet.id}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted">3-е место</span>
+                    <div className="flex items-center gap-3">
+                      <span>
+                        {team.thirdBet?.pick_country
+                          ? (translations.get(team.thirdBet.pick_country) ??
+                            translateTeamToRu(team.thirdBet.pick_country))
+                          : "—"}
+                        {team.thirdBet ? (
+                          <span className="ml-2 points-value">
+                            +
+                            {pointsByBet.get(
+                              `third_place:${team.thirdBet.id}`
+                            ) ?? 0}
+                          </span>
+                        ) : null}
+                      </span>
+                      {team.thirdBet ? (
+                        <AdminBetDeleteForm
+                          betType="third_place"
+                          betId={team.thirdBet.id}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              </section>
+            )}
 
-            {t.byStage.map((stage) => (
-              <div key={stage.stageKey} className="mt-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                  {stageLabel(stage.stageKey)}
-                </h3>
-                <div className="mt-2 flex flex-col gap-2">
-                  {stage.bets.map((bet) => (
-                    <AdminBetRow key={`${bet.betType}:${bet.id}`} bet={bet} />
-                  ))}
+            {team.displayGroups.length ? (
+              <section className="card-inner">
+                <h3 className="section-title">Ставки на матчи</h3>
+                <div className="mt-4 flex flex-col gap-4">
+                  {team.displayGroups.map((group) => {
+                    if (group.type === "groups") {
+                      const totalCount = group.children.reduce(
+                        (sum, child) => sum + child.matches.length,
+                        0
+                      );
+
+                      return (
+                        <CollapsibleStage
+                          key={`${team.teamId}-groups`}
+                          title={group.label}
+                          count={totalCount}
+                          variant="nested"
+                        >
+                          {group.children.map((child) => (
+                            <CollapsibleStage
+                              key={`${team.teamId}-${child.stageKey}`}
+                              title={child.label}
+                              count={child.matches.length}
+                              variant="nested"
+                            >
+                              {child.matches.map((m) =>
+                                renderAdminBetMatchCard(
+                                  team.teamId,
+                                  m.id,
+                                  matchById,
+                                  translations,
+                                  team.teamOutcomeBets,
+                                  team.teamScoreBets,
+                                  pointsByBet
+                                )
+                              )}
+                            </CollapsibleStage>
+                          ))}
+                        </CollapsibleStage>
+                      );
+                    }
+
+                    return (
+                      <CollapsibleStage
+                        key={`${team.teamId}-${group.stageKey}`}
+                        title={group.label}
+                        count={group.matches.length}
+                        variant="nested"
+                      >
+                        {group.matches.map((m) =>
+                          renderAdminBetMatchCard(
+                            team.teamId,
+                            m.id,
+                            matchById,
+                            translations,
+                            team.teamOutcomeBets,
+                            team.teamScoreBets,
+                            pointsByBet
+                          )
+                        )}
+                      </CollapsibleStage>
+                    );
+                  })}
                 </div>
-              </div>
-            ))}
-
-            {!t.special.length && !t.byStage.length ? (
-              <p className="mt-2 text-sm text-muted">Ставок нет</p>
+              </section>
             ) : null}
-          </section>
+          </CollapsibleStage>
         ))
       ) : (
         <p className="text-muted">Пока никто не сделал ставок.</p>

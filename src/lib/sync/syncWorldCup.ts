@@ -10,6 +10,7 @@ import {
   STAGE_RANK,
 } from "@/lib/betting/stages";
 import { stageKeyFromFootballData } from "@/lib/betting/stageMapping";
+import { extractBoardScore } from "@/lib/football/boardScore";
 import {
   afterMatchImport,
   recalculateTournamentPoints,
@@ -32,8 +33,10 @@ type FootballMatch = {
   homeTeam?: { name?: string | null; teamName?: string | null };
   awayTeam?: { name?: string | null; teamName?: string | null };
   score?: {
+    regularTime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
     fullTime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
     fulltime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
+    extraTime?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
     penalties?: { home?: unknown; away?: unknown; homeTeam?: unknown; awayTeam?: unknown };
   };
 };
@@ -94,19 +97,10 @@ function mapFootballMatchToDbMatch(args: {
   const status = mapMatchStatus(statusRaw);
   const played = status === "PLAYED";
   const score = m.score ?? {};
+  const board = extractBoardScore(score);
 
-  const homeGoals = extractNumber(
-    score?.fullTime?.home ??
-      score?.fullTime?.homeTeam ??
-      score?.fulltime?.home ??
-      score?.fulltime?.homeTeam
-  );
-  const awayGoals = extractNumber(
-    score?.fullTime?.away ??
-      score?.fullTime?.awayTeam ??
-      score?.fulltime?.away ??
-      score?.fulltime?.awayTeam
-  );
+  const homeGoals = board.home;
+  const awayGoals = board.away;
   const homePenalties = extractNumber(
     score?.penalties?.home ?? score?.penalties?.homeTeam
   );
