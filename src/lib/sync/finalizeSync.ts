@@ -9,14 +9,6 @@ import {
 } from "@/lib/sync/awardPoints";
 import type { RecalculateResult } from "@/lib/sync/types";
 
-async function countLedgerEntries(tournamentId: string) {
-  const { count } = await supabaseAdmin
-    .from("team_points_ledger")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId);
-  return count ?? 0;
-}
-
 type MatchForWinner = {
   home_team_name: string;
   away_team_name: string;
@@ -89,8 +81,14 @@ export async function afterMatchImport(args: {
   }
 }
 
+/** Полный пересчёт: сброс ledger и начисление по текущим результатам. */
 export async function recalculateTournamentPoints(): Promise<RecalculateResult> {
   const tournamentId = await getActiveTournament();
+
+  await supabaseAdmin
+    .from("team_points_ledger")
+    .delete()
+    .eq("tournament_id", tournamentId);
 
   const { data: playedMatches } = await supabaseAdmin
     .from("matches")
@@ -101,13 +99,8 @@ export async function recalculateTournamentPoints(): Promise<RecalculateResult> 
     .gte("stage_rank", MIN_BETTABLE_STAGE_RANK)
     .eq("status", "PLAYED");
 
-  let pointsAwarded = 0;
-
   for (const match of playedMatches ?? []) {
-    const before = await countLedgerEntries(tournamentId);
     await awardPointsForPlayedMatch({ tournamentId, match });
-    const after = await countLedgerEntries(tournamentId);
-    pointsAwarded += after - before;
   }
 
   const { data: finalMatch } = await supabaseAdmin
@@ -130,17 +123,19 @@ export async function recalculateTournamentPoints(): Promise<RecalculateResult> 
     .eq("status", "PLAYED")
     .maybeSingle();
 
-  const beforeSpecial = await countLedgerEntries(tournamentId);
   await awardChampionAndThirdPlace({
     tournamentId,
     championName: winnerNameFromMatch(finalMatch),
     thirdPlaceName: winnerNameFromMatch(thirdMatch),
   });
-  const afterSpecial = await countLedgerEntries(tournamentId);
-  pointsAwarded += afterSpecial - beforeSpecial;
+
+  const { count } = await supabaseAdmin
+    .from("team_points_ledger")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId);
 
   return {
     played: playedMatches?.length ?? 0,
-    pointsAwarded,
+    pointsAwarded: count ?? 0,
   };
 }

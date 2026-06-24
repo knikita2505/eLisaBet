@@ -7,8 +7,6 @@ import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { importWorldCupMatches } from "@/lib/sync/syncWorldCup";
 import { recalculateTournamentPoints } from "@/lib/sync/finalizeSync";
-import { awardPointsForPlayedMatch } from "@/lib/sync/awardPoints";
-import { getActiveTournament } from "@/lib/db/tournament";
 
 async function requireAdmin() {
   const team = await requireSessionTeam();
@@ -163,7 +161,7 @@ export async function updateMatchAction(formData: FormData) {
 
   const { data: existing } = await supabaseAdmin
     .from("matches")
-    .select("kickoff_at")
+    .select("kickoff_at,status")
     .eq("id", matchId)
     .single();
 
@@ -195,8 +193,22 @@ export async function updateMatchAction(formData: FormData) {
   };
 
   if (status === "PLAYED") {
+    if (
+      !Number.isFinite(homeGoals) ||
+      !Number.isFinite(awayGoals) ||
+      homeGoals < 0 ||
+      awayGoals < 0
+    ) {
+      redirect(
+        "/admin/results?error=" +
+          encodeURIComponent("Укажите корректный счёт матча")
+      );
+    }
     update.home_goals = homeGoals;
     update.away_goals = awayGoals;
+  } else {
+    update.home_goals = null;
+    update.away_goals = null;
   }
 
   const { error } = await supabaseAdmin
@@ -208,19 +220,8 @@ export async function updateMatchAction(formData: FormData) {
     redirect(`/admin/results?error=${encodeURIComponent(error.message)}`);
   }
 
-  if (status === "PLAYED") {
-    const tournamentId = await getActiveTournament();
-    const { data: match } = await supabaseAdmin
-      .from("matches")
-      .select(
-        "id,home_team_name,away_team_name,home_goals,away_goals,home_penalties,away_penalties"
-      )
-      .eq("id", matchId)
-      .single();
-
-    if (match) {
-      await awardPointsForPlayedMatch({ tournamentId, match });
-    }
+  if (status === "PLAYED" || existing.status === "PLAYED") {
+    await recalculateTournamentPoints();
   }
 
   redirect("/admin/results?updated=1");
