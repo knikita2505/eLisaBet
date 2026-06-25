@@ -12,7 +12,7 @@ begin
 end;
 $$;
 
--- Команды (отделы)
+-- Участники (личный зачёт; в коде team = участник)
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -100,7 +100,7 @@ create trigger trg_bets_outcome_updated_at
 before update on public.bets_outcome
 for each row execute function public.set_updated_at();
 
--- Ставка на точный счёт (включая пенальти для случаев, когда счёт в основное время равный)
+-- Ставка на точный счёт на табло (серия пенальти — отдельная ставка)
 create table if not exists public.bets_exact_score (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams(id) on delete cascade,
@@ -109,7 +109,7 @@ create table if not exists public.bets_exact_score (
   home_goals int not null check (home_goals >= 0 and home_goals <= 10),
   away_goals int not null check (away_goals >= 0 and away_goals <= 10),
 
-  -- Используются только когда home_goals = away_goals (матч мог решиться по пенальти)
+  -- Не используется (оставлено для совместимости схемы)
   home_penalties int,
   away_penalties int,
 
@@ -118,25 +118,50 @@ create table if not exists public.bets_exact_score (
 
   unique (team_id, match_id),
   constraint bets_exact_score_penalties_rules
-    check (
-      (
-        home_goals <> away_goals
-        and home_penalties is null
-        and away_penalties is null
-      )
-      or
-      (
-        home_goals = away_goals
-        and home_penalties is not null
-        and away_penalties is not null
-        and home_penalties <> away_penalties
-      )
-    )
+    check (home_penalties is null and away_penalties is null)
 );
 
 drop trigger if exists trg_bets_exact_score_updated_at on public.bets_exact_score;
 create trigger trg_bets_exact_score_updated_at
 before update on public.bets_exact_score
+for each row execute function public.set_updated_at();
+
+-- Ставка: обе команды забьют (да/нет)
+create table if not exists public.bets_both_teams_score (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  match_id uuid not null references public.matches(id) on delete cascade,
+
+  selection text not null check (selection in ('yes', 'no')),
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  unique (team_id, match_id)
+);
+
+drop trigger if exists trg_bets_both_teams_score_updated_at on public.bets_both_teams_score;
+create trigger trg_bets_both_teams_score_updated_at
+before update on public.bets_both_teams_score
+for each row execute function public.set_updated_at();
+
+-- Ставка: серия пенальти (да/нет)
+create table if not exists public.bets_penalty_shootout (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  match_id uuid not null references public.matches(id) on delete cascade,
+
+  selection text not null check (selection in ('yes', 'no')),
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  unique (team_id, match_id)
+);
+
+drop trigger if exists trg_bets_penalty_shootout_updated_at on public.bets_penalty_shootout;
+create trigger trg_bets_penalty_shootout_updated_at
+before update on public.bets_penalty_shootout
 for each row execute function public.set_updated_at();
 
 -- Ставка на победителя ЧМ
@@ -184,7 +209,14 @@ create table if not exists public.team_points_ledger (
   tournament_id uuid not null references public.tournaments(id) on delete cascade,
 
   bet_type text not null check (
-    bet_type in ('match_outcome', 'match_exact_score', 'champion', 'third_place')
+    bet_type in (
+      'match_outcome',
+      'match_exact_score',
+      'match_both_teams_score',
+      'match_penalty_shootout',
+      'champion',
+      'third_place'
+    )
   ),
 
   bet_id uuid not null,

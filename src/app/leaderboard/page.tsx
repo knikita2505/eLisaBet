@@ -1,11 +1,9 @@
-import { redirect } from "next/navigation";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
 
 export default async function LeaderboardPage() {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
 
   const tournamentId = await getActiveTournament();
 
@@ -61,7 +59,7 @@ export default async function LeaderboardPage() {
           <thead>
             <tr>
               <th>#</th>
-              <th>Команда</th>
+              <th>Участник</th>
               <th>Очки</th>
               <th>Точные счёты</th>
             </tr>
@@ -79,7 +77,7 @@ export default async function LeaderboardPage() {
                     {isTop ? "🏆" : idx + 1}
                   </td>
                   <td className="font-semibold">
-                    {t.name ?? "(без названия)"}
+                    {t.name ?? "—"}
                     {isMe ? (
                       <span className="ml-2 text-xs font-normal text-accent">
                         вы

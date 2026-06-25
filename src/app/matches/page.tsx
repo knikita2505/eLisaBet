@@ -39,8 +39,6 @@ export default async function MatchesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
-
   const params = await searchParams;
   const tournamentId = await getActiveTournament();
   const translations = await loadTeamTranslations(tournamentId);
@@ -72,6 +70,9 @@ export default async function MatchesPage({
 
   let scoreBets: { match_id: string; home_goals: number; away_goals: number }[] =
     [];
+  let bttsBets: { match_id: string; selection: "yes" | "no" }[] = [];
+  let shootoutBets: { match_id: string; selection: "yes" | "no" }[] = [];
+
   if (matchIds.length) {
     const { data } = await supabaseAdmin
       .from("bets_exact_score")
@@ -79,12 +80,30 @@ export default async function MatchesPage({
       .eq("team_id", team.teamId)
       .in("match_id", matchIds);
     scoreBets = (data ?? []) as typeof scoreBets;
+
+    const { data: bttsData } = await supabaseAdmin
+      .from("bets_both_teams_score")
+      .select("match_id,selection")
+      .eq("team_id", team.teamId)
+      .in("match_id", matchIds);
+    bttsBets = (bttsData ?? []) as typeof bttsBets;
+
+    const { data: shootoutData } = await supabaseAdmin
+      .from("bets_penalty_shootout")
+      .select("match_id,selection")
+      .eq("team_id", team.teamId)
+      .in("match_id", matchIds);
+    shootoutBets = (shootoutData ?? []) as typeof shootoutBets;
   }
 
   const outcomeByMatch = new Map(
     outcomeBets.map((b) => [b.match_id, b.selection])
   );
   const scoreByMatch = new Map(scoreBets.map((b) => [b.match_id, b]));
+  const bttsByMatch = new Map(bttsBets.map((b) => [b.match_id, b.selection]));
+  const shootoutByMatch = new Map(
+    shootoutBets.map((b) => [b.match_id, b.selection])
+  );
 
   const matchesById: Record<string, MatchBetItem> = {};
   for (const m of matches) {
@@ -104,8 +123,11 @@ export default async function MatchesPage({
       betDeadlineLabel: formatDateTime(m.bet_locked_at ?? m.kickoff_at),
       resultLabel: m.status === "PLAYED" ? formatMatchResult(m) : null,
       initialSelection: outcomeByMatch.get(m.id) ?? null,
+      initialHasExactScore: Boolean(score),
       initialHomeGoals: score?.home_goals ?? 0,
       initialAwayGoals: score?.away_goals ?? 0,
+      initialBothTeamsScore: bttsByMatch.get(m.id) ?? null,
+      initialPenaltyShootout: shootoutByMatch.get(m.id) ?? null,
     };
   }
 
@@ -139,8 +161,9 @@ export default async function MatchesPage({
       <div>
         <h1 className="page-title">Матчи и ставки</h1>
         <p className="page-desc">
-          Выберите исход и точный счёт по матчам, затем нажмите «Сохранить
-          ставки» внизу экрана. Групповой этап — матчи с 26 июня.
+          Выберите исход, точный счёт и дополнительные ставки по матчам, затем
+          нажмите «Сохранить ставки» внизу экрана. Групповой этап — матчи с 26
+          июня.
         </p>
       </div>
 
@@ -152,11 +175,17 @@ export default async function MatchesPage({
       ) : null}
       {params.error === "conflict" ? (
         <div className="alert-error">
-          Не удалось сохранить: счёт на табло противоречит выбранному исходу.
+          Не удалось сохранить: ставки противоречат друг другу. Проверьте исход,
+          точный счёт, «обе забьют» и «серию пенальти».
+        </div>
+      ) : params.error === "no_outcome" ? (
+        <div className="alert-error">
+          Не удалось сохранить: для каждого изменённого матча нужно выбрать
+          исход.
         </div>
       ) : params.error ? (
         <div className="alert-error">
-          Не удалось сохранить. Проверьте, что выбран исход.
+          Не удалось сохранить: {decodeURIComponent(params.error)}
         </div>
       ) : null}
 

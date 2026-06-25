@@ -6,13 +6,12 @@ import {
   setChampionBetAction,
   setThirdPlaceBetAction,
 } from "@/app/_actions/special";
+import { FormLoadingOverlay } from "@/app/_components/FormLoadingOverlay";
 import { formatTime } from "@/lib/formatDateTime";
 import { translateTeamToRu } from "@/lib/football/teamTranslations";
 
 export default async function SpecialPage() {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
-
   const tournamentId = await getActiveTournament();
 
   const { data: tournament } = await supabaseAdmin
@@ -113,6 +112,7 @@ export default async function SpecialPage() {
           action={setChampionBetAction}
           className="mt-4 flex max-w-md flex-col gap-3"
         >
+          <FormLoadingOverlay />
           <label className="label">
             Выберите страну
             <select
@@ -161,6 +161,7 @@ export default async function SpecialPage() {
           action={setThirdPlaceBetAction}
           className="mt-4 flex max-w-md flex-col gap-3"
         >
+          <FormLoadingOverlay />
           <label className="label">
             Выберите страну
             <select

@@ -1,6 +1,11 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { exactScoreMatchesBet, matchWinner } from "@/lib/betting/score";
+import {
+  actualBothTeamsScore,
+  actualPenaltyShootout,
+  yesNoMatchesActual,
+} from "@/lib/betting/matchProps";
 import { translateTeamToRu } from "@/lib/football/teamTranslations";
 
 function countryPickMatches(pick: string, actual: string) {
@@ -44,33 +49,33 @@ export async function awardPointsForPlayedMatch(params: {
 }) {
   const { tournamentId, match } = params;
   const winner = actualWinner(match);
-  if (!winner) return;
 
-  // Outcome bet (+1)
-  const { data: outcomeBets } = await supabaseAdmin
-    .from("bets_outcome")
-    .select("id,team_id,selection")
-    .eq("match_id", match.id);
+  if (winner) {
+    const { data: outcomeBets } = await supabaseAdmin
+      .from("bets_outcome")
+      .select("id,team_id,selection")
+      .eq("match_id", match.id);
 
-  for (const bet of outcomeBets ?? []) {
-    const correct = bet.selection === winner;
-    if (!correct) continue;
+    for (const bet of outcomeBets ?? []) {
+      const correct = bet.selection === winner;
+      if (!correct) continue;
 
-    const exists = await ledgerExists(
-      bet.team_id,
-      "match_outcome",
-      bet.id
-    );
-    if (exists) continue;
+      const exists = await ledgerExists(
+        bet.team_id,
+        "match_outcome",
+        bet.id
+      );
+      if (exists) continue;
 
-    await supabaseAdmin.from("team_points_ledger").insert({
-      team_id: bet.team_id,
-      tournament_id: tournamentId,
-      bet_type: "match_outcome",
-      bet_id: bet.id,
-      match_id: match.id,
-      points: 1,
-    });
+      await supabaseAdmin.from("team_points_ledger").insert({
+        team_id: bet.team_id,
+        tournament_id: tournamentId,
+        bet_type: "match_outcome",
+        bet_id: bet.id,
+        match_id: match.id,
+        points: 1,
+      });
+    }
   }
 
   // Exact score bet (+2, но в сумме с исходом даст +3)
@@ -96,6 +101,62 @@ export async function awardPointsForPlayedMatch(params: {
       match_id: match.id,
       points: 2,
     });
+  }
+
+  const bttsActual = actualBothTeamsScore(match);
+  if (bttsActual !== null) {
+    const { data: bttsBets } = await supabaseAdmin
+      .from("bets_both_teams_score")
+      .select("id,team_id,selection")
+      .eq("match_id", match.id);
+
+    for (const bet of bttsBets ?? []) {
+      if (!yesNoMatchesActual(bet.selection, bttsActual)) continue;
+
+      const exists = await ledgerExists(
+        bet.team_id,
+        "match_both_teams_score",
+        bet.id
+      );
+      if (exists) continue;
+
+      await supabaseAdmin.from("team_points_ledger").insert({
+        team_id: bet.team_id,
+        tournament_id: tournamentId,
+        bet_type: "match_both_teams_score",
+        bet_id: bet.id,
+        match_id: match.id,
+        points: 1,
+      });
+    }
+  }
+
+  const shootoutActual = actualPenaltyShootout(match);
+  if (shootoutActual !== null) {
+    const { data: shootoutBets } = await supabaseAdmin
+      .from("bets_penalty_shootout")
+      .select("id,team_id,selection")
+      .eq("match_id", match.id);
+
+    for (const bet of shootoutBets ?? []) {
+      if (!yesNoMatchesActual(bet.selection, shootoutActual)) continue;
+
+      const exists = await ledgerExists(
+        bet.team_id,
+        "match_penalty_shootout",
+        bet.id
+      );
+      if (exists) continue;
+
+      await supabaseAdmin.from("team_points_ledger").insert({
+        team_id: bet.team_id,
+        tournament_id: tournamentId,
+        bet_type: "match_penalty_shootout",
+        bet_id: bet.id,
+        match_id: match.id,
+        points: 1,
+      });
+    }
   }
 }
 

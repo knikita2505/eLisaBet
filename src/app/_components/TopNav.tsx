@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import type { TeamSession } from "@/lib/auth/session";
 import { logoutAction } from "@/app/_actions/auth";
@@ -10,7 +13,13 @@ const NAV_ITEMS = [
   { href: "/leaderboard", label: "Лидерборд" },
 ] as const;
 
+function isNavActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function TopNav({ team }: { team: TeamSession | null }) {
+  const pathname = usePathname();
   const isAdmin = team?.role === "admin";
 
   return (
@@ -35,13 +44,31 @@ export function TopNav({ team }: { team: TeamSession | null }) {
 
         {team ? (
           <nav className="flex flex-wrap items-center gap-1">
-            {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href} className="nav-link">
-                {item.label}
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const active = isNavActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={active ? "nav-link nav-link-active" : "nav-link"}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
             {isAdmin ? (
-              <Link href="/admin" className="nav-link nav-link-admin">
+              <Link
+                href="/admin"
+                className={
+                  isNavActive(pathname, "/admin")
+                    ? "nav-link nav-link-admin nav-link-active"
+                    : "nav-link nav-link-admin"
+                }
+                aria-current={
+                  isNavActive(pathname, "/admin") ? "page" : undefined
+                }
+              >
                 Админ
               </Link>
             ) : null}

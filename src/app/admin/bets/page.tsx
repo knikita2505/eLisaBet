@@ -12,6 +12,7 @@ import { loadTeamTranslations } from "@/lib/db/teamTranslations";
 import { translateTeamToRu } from "@/lib/football/teamTranslations";
 import { deleteBetAction, deleteMatchBetsAction } from "@/app/_actions/admin";
 import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
+import { formatYesNoLabel } from "@/lib/betting/matchProps";
 
 function TrashIcon() {
   return (
@@ -99,15 +100,19 @@ function renderAdminBetMatchCard(
   translations: Map<string, string>,
   outcomeBets: { id: string; match_id: string; selection: "home" | "away" }[],
   scoreBets: { id: string; match_id: string; home_goals: number; away_goals: number }[],
+  bttsBets: { id: string; match_id: string; selection: "yes" | "no" }[],
+  shootoutBets: { id: string; match_id: string; selection: "yes" | "no" }[],
   pointsByBet: Map<string, number>
 ) {
   const m = matchById.get(matchId);
   const outcome = outcomeBets.find((b) => b.match_id === matchId);
   const score = scoreBets.find((b) => b.match_id === matchId);
+  const btts = bttsBets.find((b) => b.match_id === matchId);
+  const shootout = shootoutBets.find((b) => b.match_id === matchId);
 
   return (
     <div key={matchId} className="card-inner relative">
-      {(outcome || score) ? (
+      {outcome || score || btts || shootout ? (
         <div className="absolute right-2 top-2">
           <AdminMatchBetsDeleteForm teamId={teamId} matchId={matchId} />
         </div>
@@ -166,6 +171,33 @@ function renderAdminBetMatchCard(
             </span>
           </div>
         ) : null}
+        {btts ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-type">Обе забьют</span>
+              <span>{formatYesNoLabel(btts.selection)}</span>
+              <span className="points-value">
+                +{pointsByBet.get(`match_both_teams_score:${btts.id}`) ?? 0}
+              </span>
+            </div>
+            <AdminBetDeleteForm betType="match_both_teams_score" betId={btts.id} />
+          </div>
+        ) : null}
+        {shootout ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="badge badge-type">Серия пенальти</span>
+              <span>{formatYesNoLabel(shootout.selection)}</span>
+              <span className="points-value">
+                +{pointsByBet.get(`match_penalty_shootout:${shootout.id}`) ?? 0}
+              </span>
+            </div>
+            <AdminBetDeleteForm
+              betType="match_penalty_shootout"
+              betId={shootout.id}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -193,6 +225,8 @@ export default async function AdminBetsPage({
   const [
     { data: outcomeBets },
     { data: scoreBets },
+    { data: bttsBets },
+    { data: shootoutBets },
     { data: championBets },
     { data: thirdBets },
     { data: ledger },
@@ -201,6 +235,12 @@ export default async function AdminBetsPage({
     supabaseAdmin
       .from("bets_exact_score")
       .select("id,team_id,match_id,home_goals,away_goals"),
+    supabaseAdmin
+      .from("bets_both_teams_score")
+      .select("id,team_id,match_id,selection"),
+    supabaseAdmin
+      .from("bets_penalty_shootout")
+      .select("id,team_id,match_id,selection"),
     supabaseAdmin
       .from("bets_champion")
       .select("id,team_id,pick_country")
@@ -223,6 +263,8 @@ export default async function AdminBetsPage({
   const teamIdsWithBets = new Set<string>([
     ...(outcomeBets ?? []).map((b) => b.team_id),
     ...(scoreBets ?? []).map((b) => b.team_id),
+    ...(bttsBets ?? []).map((b) => b.team_id),
+    ...(shootoutBets ?? []).map((b) => b.team_id),
     ...(championBets ?? []).map((b) => b.team_id),
     ...(thirdBets ?? []).map((b) => b.team_id),
   ]);
@@ -231,6 +273,8 @@ export default async function AdminBetsPage({
     ...new Set([
       ...(outcomeBets ?? []).map((b) => b.match_id),
       ...(scoreBets ?? []).map((b) => b.match_id),
+      ...(bttsBets ?? []).map((b) => b.match_id),
+      ...(shootoutBets ?? []).map((b) => b.match_id),
     ]),
   ];
 
@@ -256,6 +300,10 @@ export default async function AdminBetsPage({
       const teamScoreBets = (scoreBets ?? []).filter(
         (b) => b.team_id === teamId
       );
+      const teamBttsBets = (bttsBets ?? []).filter((b) => b.team_id === teamId);
+      const teamShootoutBets = (shootoutBets ?? []).filter(
+        (b) => b.team_id === teamId
+      );
       const championBet =
         (championBets ?? []).find((b) => b.team_id === teamId) ?? null;
       const thirdBet =
@@ -265,6 +313,8 @@ export default async function AdminBetsPage({
         ...new Set([
           ...teamOutcomeBets.map((b) => b.match_id),
           ...teamScoreBets.map((b) => b.match_id),
+          ...teamBttsBets.map((b) => b.match_id),
+          ...teamShootoutBets.map((b) => b.match_id),
         ]),
       ];
 
@@ -288,6 +338,8 @@ export default async function AdminBetsPage({
         thirdBet,
         teamOutcomeBets,
         teamScoreBets,
+        teamBttsBets,
+        teamShootoutBets,
         displayGroups,
         totalCount: matchCardCount + specialCount,
       };
@@ -299,7 +351,7 @@ export default async function AdminBetsPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="page-title">Ставки всех команд</h1>
+          <h1 className="page-title">Ставки всех участников</h1>
           <p className="page-desc">Видны только администратору.</p>
         </div>
         <Link href="/admin" className="link-back">
@@ -412,6 +464,8 @@ export default async function AdminBetsPage({
                                   translations,
                                   team.teamOutcomeBets,
                                   team.teamScoreBets,
+                                  team.teamBttsBets,
+                                  team.teamShootoutBets,
                                   pointsByBet
                                 )
                               )}
@@ -436,6 +490,8 @@ export default async function AdminBetsPage({
                             translations,
                             team.teamOutcomeBets,
                             team.teamScoreBets,
+                            team.teamBttsBets,
+                            team.teamShootoutBets,
                             pointsByBet
                           )
                         )}
