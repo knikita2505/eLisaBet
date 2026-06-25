@@ -39,8 +39,6 @@ export default async function MatchesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
-
   const params = await searchParams;
   const tournamentId = await getActiveTournament();
   const translations = await loadTeamTranslations(tournamentId);

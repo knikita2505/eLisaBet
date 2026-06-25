@@ -19,7 +19,6 @@ export default async function AdminPage({
 }) {
   const team = await requireSessionTeam();
   if (team.role !== "admin") redirect("/matches");
-  if (!team.name) redirect("/onboarding");
 
   const params = await searchParams;
   const tournamentId = await getActiveTournament();
@@ -46,7 +45,7 @@ export default async function AdminPage({
         <div>
           <h1 className="page-title">Админ</h1>
           <p className="page-desc">
-            Синхронизация, команды и управление турниром.
+            Синхронизация, участники и управление турниром.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -54,7 +53,7 @@ export default async function AdminPage({
             Редактировать матчи →
           </Link>
           <Link href="/admin/bets" className="btn-outline">
-            Ставки всех команд →
+            Ставки всех участников →
           </Link>
         </div>
       </div>
@@ -73,15 +72,15 @@ export default async function AdminPage({
       ) : null}
       {params.created ? (
         <div className="alert-success">
-          Команда создана. Код:{" "}
+          Участник создан. Код:{" "}
           <span className="font-mono font-bold">{params.created}</span>
         </div>
       ) : null}
       {params.teamUpdated ? (
-        <div className="alert-success">Название команды обновлено.</div>
+        <div className="alert-success">Имя участника обновлено.</div>
       ) : null}
       {params.teamDeleted ? (
-        <div className="alert-success">Команда удалена.</div>
+        <div className="alert-success">Участник удалён.</div>
       ) : null}
       {params.error ? (
         <div className="alert-error">{decodeURIComponent(params.error)}</div>
@@ -116,21 +115,22 @@ export default async function AdminPage({
       </section>
 
       <section className="card-padded">
-        <h2 className="section-title">Команды</h2>
+        <h2 className="section-title">Участники</h2>
         <form
           action={createTeamAction}
           className="mt-4 flex flex-col gap-3 md:flex-row md:items-end"
         >
           <label className="label flex-1">
-            Код (необязательно)
+            Имя
             <input
-              name="code"
+              name="name"
               className="input"
-              placeholder="MARKETING-01"
+              placeholder="Например: Иван Петров"
+              required
             />
           </label>
           <button type="submit" className="btn-primary">
-            Создать команду
+            Создать участника
           </button>
         </form>
 
@@ -142,7 +142,7 @@ export default async function AdminPage({
                   <input type="hidden" name="teamId" value={t.id} />
                   <button
                     type="submit"
-                    aria-label="Удалить команду"
+                    aria-label="Удалить участника"
                     className="rounded-md p-1.5 text-red-300/80 hover:bg-red-500/10 hover:text-red-200"
                   >
                     <svg
@@ -163,6 +163,10 @@ export default async function AdminPage({
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-semibold text-white/90">
+                  {t.name ?? "—"}
+                </span>
+                <span className="text-muted">·</span>
                 <span className="font-mono text-accent">{t.code}</span>
                 <span className="text-muted">·</span>
                 <span className="text-muted">{t.role}</span>
@@ -174,7 +178,7 @@ export default async function AdminPage({
               >
                 <input type="hidden" name="teamId" value={t.id} />
                 <label className="label-sm flex-1">
-                  Название
+                  Имя
                   <input
                     name="name"
                     defaultValue={t.name ?? ""}

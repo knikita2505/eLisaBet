@@ -2,8 +2,8 @@
 
 import "server-only";
 import { redirect } from "next/navigation";
-import { randomBytes } from "crypto";
 import { requireSessionTeam } from "@/lib/auth/session";
+import { generateUniqueParticipantCode } from "@/lib/auth/participantCode";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { importWorldCupMatches } from "@/lib/sync/syncWorldCup";
 import { recalculateTournamentPoints } from "@/lib/sync/finalizeSync";
@@ -55,15 +55,25 @@ export async function recalculatePointsAction() {
 export async function createTeamAction(formData: FormData) {
   await requireAdmin();
 
-  const codeRaw = formData.get("code");
-  const code =
-    typeof codeRaw === "string" && codeRaw.trim()
-      ? codeRaw.trim()
-      : `TEAM-${randomBytes(3).toString("hex").toUpperCase()}`;
+  const nameRaw = formData.get("name");
+  const name = typeof nameRaw === "string" ? nameRaw.trim() : "";
+
+  if (!name) {
+    redirect("/admin?error=" + encodeURIComponent("Укажите имя участника"));
+  }
+
+  let code: string;
+  try {
+    code = await generateUniqueParticipantCode();
+  } catch (e: unknown) {
+    const message =
+      e instanceof Error ? e.message : "Не удалось сгенерировать код";
+    redirect(`/admin?error=${encodeURIComponent(message)}`);
+  }
 
   const { error } = await supabaseAdmin.from("teams").insert({
     code,
-    name: null,
+    name,
     role: "team",
   });
 
@@ -106,7 +116,9 @@ export async function deleteTeamAction(formData: FormData) {
   }
 
   if (teamId === admin.teamId) {
-    redirect("/admin?error=" + encodeURIComponent("Нельзя удалить свою команду"));
+    redirect(
+      "/admin?error=" + encodeURIComponent("Нельзя удалить свой аккаунт")
+    );
   }
 
   const { data: target } = await supabaseAdmin

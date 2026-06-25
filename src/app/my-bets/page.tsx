@@ -99,8 +99,6 @@ function renderBetMatchCard(
 
 export default async function MyBetsPage() {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
-
   const tournamentId = await getActiveTournament();
   const translations = await loadTeamTranslations(tournamentId);
 
@@ -168,7 +166,7 @@ export default async function MyBetsPage() {
       <div className="card-padded flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Мои ставки</h1>
-          <p className="page-desc">Команда: {team.name}</p>
+          <p className="page-desc">Участник: {team.name ?? "—"}</p>
         </div>
         <div className="rounded-xl border border-orange-500/25 bg-orange-500/10 px-5 py-3 text-center shadow-md shadow-orange-500/10">
           <div className="text-xs uppercase tracking-wide text-muted">Очков</div>

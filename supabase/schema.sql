@@ -12,7 +12,7 @@ begin
 end;
 $$;
 
--- Команды (отделы)
+-- Участники (личный зачёт; в коде team = участник)
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,

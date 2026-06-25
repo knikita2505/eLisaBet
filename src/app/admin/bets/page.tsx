@@ -299,7 +299,7 @@ export default async function AdminBetsPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="page-title">Ставки всех команд</h1>
+          <h1 className="page-title">Ставки всех участников</h1>
           <p className="page-desc">Видны только администратору.</p>
         </div>
         <Link href="/admin" className="link-back">

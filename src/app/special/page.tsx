@@ -11,8 +11,6 @@ import { translateTeamToRu } from "@/lib/football/teamTranslations";
 
 export default async function SpecialPage() {
   const team = await requireSessionTeam();
-  if (!team.name) redirect("/onboarding");
-
   const tournamentId = await getActiveTournament();
 
   const { data: tournament } = await supabaseAdmin

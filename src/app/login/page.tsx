@@ -13,16 +13,16 @@ export default async function LoginPage({
       <div className="card-elevated">
         <h1 className="page-title">Вход</h1>
         <p className="page-desc">
-          Введите уникальный код команды, чтобы делать ставки на ЧМ 2026.
+          Введите личный код доступа, чтобы делать ставки на ЧМ 2026.
         </p>
 
         <form action={loginAction} className="mt-6 flex flex-col gap-4">
           <label className="label">
-            Код команды
+            Код доступа
             <input
               name="code"
               className="input"
-              placeholder="Например: ELISA-123"
+              placeholder="Например: A3K9M"
               autoComplete="off"
               required
             />
@@ -30,7 +30,7 @@ export default async function LoginPage({
 
           {hasError ? (
             <div className="alert-error">
-              Неверный код или команда не найдена.
+              Неверный код или участник не найден.
             </div>
           ) : null}
 

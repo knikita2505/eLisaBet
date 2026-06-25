@@ -12,14 +12,13 @@ export async function loginAction(formData: FormData) {
 
   const { data: team, error } = await supabaseAdmin
     .from("teams")
-    .select("id, name")
+    .select("id")
     .eq("code", code)
     .single();
 
   if (error || !team) redirect("/login?error=1");
 
   await createTeamSession(team.id);
-  if (!team.name) redirect("/onboarding");
   redirect("/matches");
 }
 
