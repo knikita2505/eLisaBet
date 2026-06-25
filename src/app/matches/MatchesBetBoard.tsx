@@ -3,7 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
 import { setAllMatchBetsAction } from "@/app/_actions/bets";
-import { getOutcomeScoreConflictMessage } from "@/lib/betting/betValidation";
+import { getMatchBetConflictMessage } from "@/lib/betting/betValidation";
+import type { YesNoSelection } from "@/lib/betting/matchProps";
 import { MatchBetCard } from "@/app/matches/MatchBetCard";
 
 export type MatchBetItem = {
@@ -17,8 +18,11 @@ export type MatchBetItem = {
   betDeadlineLabel: string;
   resultLabel: string | null;
   initialSelection: "home" | "away" | null;
+  initialHasExactScore: boolean;
   initialHomeGoals: number;
   initialAwayGoals: number;
+  initialBothTeamsScore: YesNoSelection | null;
+  initialPenaltyShootout: YesNoSelection | null;
 };
 
 export type MatchesDisplayGroup =
@@ -38,10 +42,16 @@ type BetState = {
   selection: "home" | "away" | null;
   homeGoals: number;
   awayGoals: number;
+  hasExactScore: boolean;
+  bothTeamsScore: YesNoSelection | null;
+  penaltyShootout: YesNoSelection | null;
   locked: boolean;
   initialSelection: "home" | "away" | null;
+  initialHasExactScore: boolean;
   initialHomeGoals: number;
   initialAwayGoals: number;
+  initialBothTeamsScore: YesNoSelection | null;
+  initialPenaltyShootout: YesNoSelection | null;
 };
 
 type Props = {
@@ -61,27 +71,37 @@ function stageBetsComplete(
 function betIsDirty(bet: BetState) {
   return (
     bet.selection !== bet.initialSelection ||
+    bet.hasExactScore !== bet.initialHasExactScore ||
     bet.homeGoals !== bet.initialHomeGoals ||
-    bet.awayGoals !== bet.initialAwayGoals
+    bet.awayGoals !== bet.initialAwayGoals ||
+    bet.bothTeamsScore !== bet.initialBothTeamsScore ||
+    bet.penaltyShootout !== bet.initialPenaltyShootout
   );
 }
 
 function betIsSaveable(bet: BetState) {
-  return !bet.locked && betIsDirty(bet);
+  return (
+    !bet.locked &&
+    betIsDirty(bet) &&
+    (bet.selection === "home" || bet.selection === "away")
+  );
 }
 
 function conflictForBet(
   bet: BetState,
   match: MatchBetItem | undefined
 ): string | null {
-  if (!bet.selection || bet.locked || !match) return null;
-  return getOutcomeScoreConflictMessage(
-    bet.selection,
-    bet.homeGoals,
-    bet.awayGoals,
-    match.homeLabel,
-    match.awayLabel
-  );
+  if (bet.locked || !match) return null;
+  return getMatchBetConflictMessage({
+    selection: bet.selection,
+    hasExactScore: bet.hasExactScore,
+    homeGoals: bet.homeGoals,
+    awayGoals: bet.awayGoals,
+    bothTeamsScore: bet.bothTeamsScore,
+    penaltyShootout: bet.penaltyShootout,
+    homeTeamName: match.homeLabel,
+    awayTeamName: match.awayLabel,
+  });
 }
 
 export function MatchesBetBoard({
@@ -97,10 +117,16 @@ export function MatchesBetBoard({
         selection: match.initialSelection,
         homeGoals: match.initialHomeGoals,
         awayGoals: match.initialAwayGoals,
+        hasExactScore: match.initialHasExactScore,
+        bothTeamsScore: match.initialBothTeamsScore,
+        penaltyShootout: match.initialPenaltyShootout,
         locked: match.locked,
         initialSelection: match.initialSelection,
         initialHomeGoals: match.initialHomeGoals,
         initialAwayGoals: match.initialAwayGoals,
+        initialHasExactScore: match.initialHasExactScore,
+        initialBothTeamsScore: match.initialBothTeamsScore,
+        initialPenaltyShootout: match.initialPenaltyShootout,
       });
     }
     return initial;
@@ -144,8 +170,11 @@ export function MatchesBetBoard({
     const payload = pendingBets.map(([matchId, bet]) => ({
       matchId,
       selection: bet.selection,
+      hasExactScore: bet.hasExactScore,
       homeGoals: bet.homeGoals,
       awayGoals: bet.awayGoals,
+      bothTeamsScore: bet.bothTeamsScore,
+      penaltyShootout: bet.penaltyShootout,
     }));
 
     const formData = new FormData();
@@ -197,12 +226,24 @@ export function MatchesBetBoard({
           awayTeamName={match.awayLabel}
           locked={bet.locked}
           selection={bet.selection}
+          hasExactScore={bet.hasExactScore}
           homeGoals={bet.homeGoals}
           awayGoals={bet.awayGoals}
+          bothTeamsScore={bet.bothTeamsScore}
+          penaltyShootout={bet.penaltyShootout}
           conflictMessage={conflicts.get(matchId) ?? null}
           onSelectionChange={(selection) => updateBet(matchId, { selection })}
+          onHasExactScoreChange={(hasExactScore) =>
+            updateBet(matchId, { hasExactScore })
+          }
           onHomeGoalsChange={(homeGoals) => updateBet(matchId, { homeGoals })}
           onAwayGoalsChange={(awayGoals) => updateBet(matchId, { awayGoals })}
+          onBothTeamsScoreChange={(bothTeamsScore) =>
+            updateBet(matchId, { bothTeamsScore })
+          }
+          onPenaltyShootoutChange={(penaltyShootout) =>
+            updateBet(matchId, { penaltyShootout })
+          }
         />
       </section>
     );

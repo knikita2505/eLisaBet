@@ -247,6 +247,8 @@ export async function updateMatchResultAction(formData: FormData) {
 const BET_TABLES = {
   match_outcome: "bets_outcome",
   match_exact_score: "bets_exact_score",
+  match_both_teams_score: "bets_both_teams_score",
+  match_penalty_shootout: "bets_penalty_shootout",
   champion: "bets_champion",
   third_place: "bets_third_place",
 } as const;
@@ -312,42 +314,55 @@ export async function deleteMatchBetsAction(formData: FormData) {
     .eq("match_id", matchId)
     .maybeSingle();
 
-  if (!outcomeBet && !scoreBet) {
+  const { data: bttsBet } = await supabaseAdmin
+    .from("bets_both_teams_score")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("match_id", matchId)
+    .maybeSingle();
+
+  const { data: shootoutBet } = await supabaseAdmin
+    .from("bets_penalty_shootout")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("match_id", matchId)
+    .maybeSingle();
+
+  if (!outcomeBet && !scoreBet && !bttsBet && !shootoutBet) {
     redirect("/admin/bets?error=invalid");
   }
 
-  if (outcomeBet) {
+  const deleteBetRecord = async (betType: BetType, betId: string) => {
     await supabaseAdmin
       .from("team_points_ledger")
       .delete()
-      .eq("bet_type", "match_outcome")
-      .eq("bet_id", outcomeBet.id);
+      .eq("bet_type", betType)
+      .eq("bet_id", betId);
 
     const { error } = await supabaseAdmin
-      .from("bets_outcome")
+      .from(BET_TABLES[betType])
       .delete()
-      .eq("id", outcomeBet.id);
+      .eq("id", betId);
 
     if (error) {
       redirect(`/admin/bets?error=${encodeURIComponent(error.message)}`);
     }
+  };
+
+  if (outcomeBet) {
+    await deleteBetRecord("match_outcome", outcomeBet.id);
   }
 
   if (scoreBet) {
-    await supabaseAdmin
-      .from("team_points_ledger")
-      .delete()
-      .eq("bet_type", "match_exact_score")
-      .eq("bet_id", scoreBet.id);
+    await deleteBetRecord("match_exact_score", scoreBet.id);
+  }
 
-    const { error } = await supabaseAdmin
-      .from("bets_exact_score")
-      .delete()
-      .eq("id", scoreBet.id);
+  if (bttsBet) {
+    await deleteBetRecord("match_both_teams_score", bttsBet.id);
+  }
 
-    if (error) {
-      redirect(`/admin/bets?error=${encodeURIComponent(error.message)}`);
-    }
+  if (shootoutBet) {
+    await deleteBetRecord("match_penalty_shootout", shootoutBet.id);
   }
 
   redirect("/admin/bets?deleted=1");

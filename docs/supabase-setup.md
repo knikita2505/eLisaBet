@@ -83,6 +83,10 @@ set name_ru = team_name
 where name_ru is null;
 ```
 
+Ставки «обе забьют» и «серия пенальти» — выполните `supabase/migrations/20260620_match_prop_bets.sql`.
+
+Ничья в точном счёте (например 2:2) — выполните `supabase/migrations/20260620_exact_score_no_penalties.sql`.
+
 После миграции запустите синхронизацию в админке — словарь `name_ru` заполнится автоматически.
 
 После того как реализуем endpoint синка, можно будет делать обновления по `CRON_SECRET`.

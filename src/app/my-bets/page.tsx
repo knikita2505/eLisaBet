@@ -10,6 +10,7 @@ import { getMatchDisplayStatus } from "@/lib/betting/matchStatus";
 import { loadTeamTranslations } from "@/lib/db/teamTranslations";
 import { translateTeamToRu } from "@/lib/football/teamTranslations";
 import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
+import { formatYesNoLabel } from "@/lib/betting/matchProps";
 
 type MatchRow = {
   id: string;
@@ -31,11 +32,15 @@ function renderBetMatchCard(
   translations: Map<string, string>,
   outcomeBets: { id: string; match_id: string; selection: "home" | "away" }[],
   scoreBets: { id: string; match_id: string; home_goals: number; away_goals: number }[],
+  bttsBets: { id: string; match_id: string; selection: "yes" | "no" }[],
+  shootoutBets: { id: string; match_id: string; selection: "yes" | "no" }[],
   pointsByBet: Map<string, number>
 ) {
   const m = matchById.get(matchId);
   const outcome = outcomeBets.find((b) => b.match_id === matchId);
   const score = scoreBets.find((b) => b.match_id === matchId);
+  const btts = bttsBets.find((b) => b.match_id === matchId);
+  const shootout = shootoutBets.find((b) => b.match_id === matchId);
 
   return (
     <div key={matchId} className="card-inner">
@@ -92,6 +97,24 @@ function renderBetMatchCard(
             </span>
           </div>
         ) : null}
+        {btts ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Обе забьют</span>
+            <span>{formatYesNoLabel(btts.selection)}</span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_both_teams_score:${btts.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
+        {shootout ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-type">Серия пенальти</span>
+            <span>{formatYesNoLabel(shootout.selection)}</span>
+            <span className="points-value">
+              +{pointsByBet.get(`match_penalty_shootout:${shootout.id}`) ?? 0}
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -112,6 +135,16 @@ export default async function MyBetsPage() {
     .select("id,home_goals,away_goals,match_id,created_at")
     .eq("team_id", team.teamId);
 
+  const { data: bttsBets } = await supabaseAdmin
+    .from("bets_both_teams_score")
+    .select("id,selection,match_id,created_at")
+    .eq("team_id", team.teamId);
+
+  const { data: shootoutBets } = await supabaseAdmin
+    .from("bets_penalty_shootout")
+    .select("id,selection,match_id,created_at")
+    .eq("team_id", team.teamId);
+
   const { data: championBet } = await supabaseAdmin
     .from("bets_champion")
     .select("id,pick_country,created_at")
@@ -130,6 +163,8 @@ export default async function MyBetsPage() {
     ...new Set([
       ...(outcomeBets ?? []).map((b) => b.match_id),
       ...(scoreBets ?? []).map((b) => b.match_id),
+      ...(bttsBets ?? []).map((b) => b.match_id),
+      ...(shootoutBets ?? []).map((b) => b.match_id),
     ]),
   ];
 
@@ -211,7 +246,10 @@ export default async function MyBetsPage() {
       <section className="card-padded">
         <h2 className="section-title">Ставки на матчи</h2>
 
-        {!outcomeBets?.length && !scoreBets?.length ? (
+        {!outcomeBets?.length &&
+        !scoreBets?.length &&
+        !bttsBets?.length &&
+        !shootoutBets?.length ? (
           <p className="mt-3 text-sm text-muted">
             Пока нет ставок. Перейдите в раздел «Матчи».
           </p>
@@ -244,6 +282,8 @@ export default async function MyBetsPage() {
                             translations,
                             outcomeBets ?? [],
                             scoreBets ?? [],
+                            bttsBets ?? [],
+                            shootoutBets ?? [],
                             pointsByBet
                           )
                         )}
@@ -266,6 +306,8 @@ export default async function MyBetsPage() {
                       translations,
                       outcomeBets ?? [],
                       scoreBets ?? [],
+                      bttsBets ?? [],
+                      shootoutBets ?? [],
                       pointsByBet
                     )
                   )}
