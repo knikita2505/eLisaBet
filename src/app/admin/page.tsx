@@ -10,6 +10,7 @@ import {
   syncWorldCupAction,
   updateTeamNameAction,
 } from "@/app/_actions/admin";
+import { FormLoadingOverlay } from "@/app/_components/FormLoadingOverlay";
 import { formatDateTime } from "@/lib/formatDateTime";
 
 export default async function AdminPage({
@@ -98,11 +99,13 @@ export default async function AdminPage({
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
           <form action={syncWorldCupAction}>
+            <FormLoadingOverlay />
             <button type="submit" className="btn-primary">
               Синхронизировать матчи
             </button>
           </form>
           <form action={recalculatePointsAction}>
+            <FormLoadingOverlay />
             <button type="submit" className="btn-outline">
               Пересчитать очки
             </button>

@@ -417,6 +417,16 @@ body {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.nav-link-active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.nav-link-admin.nav-link-active {
+  color: #fed7aa;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .nav-link-admin {
   color: #fdba74;
 }
@@ -447,4 +457,29 @@ body {
 
 .link-back:hover {
   color: #fdba74;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 30, 54, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+.loading-flower {
+  width: 4.5rem;
+  height: calc(4.5rem * 1024 / 819);
+  opacity: 0.95;
+  filter: drop-shadow(0 8px 24px rgba(249, 115, 22, 0.35));
+  animation: loading-spin 1.2s linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

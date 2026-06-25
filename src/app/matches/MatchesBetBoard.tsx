@@ -5,6 +5,7 @@ import { CollapsibleStage } from "@/app/_components/CollapsibleStage";
 import { setAllMatchBetsAction } from "@/app/_actions/bets";
 import { getMatchBetConflictMessage } from "@/lib/betting/betValidation";
 import type { YesNoSelection } from "@/lib/betting/matchProps";
+import { LoadingOverlay } from "@/app/_components/LoadingOverlay";
 import { MatchBetCard } from "@/app/matches/MatchBetCard";
 
 export type MatchBetItem = {
@@ -251,6 +252,7 @@ export function MatchesBetBoard({
 
   return (
     <>
+      <LoadingOverlay show={isPending} />
       <div className="flex flex-col gap-6 pb-24">
         {displayGroups.map((group) => {
           if (group.type === "groups") {
