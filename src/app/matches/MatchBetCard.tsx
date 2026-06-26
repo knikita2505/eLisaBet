@@ -12,6 +12,7 @@ type Props = {
   awayGoals: number;
   bothTeamsScore: YesNoSelection | null;
   penaltyShootout: YesNoSelection | null;
+  allowsPenaltyShootout: boolean;
   conflictMessage: string | null;
   onSelectionChange: (selection: "home" | "away") => void;
   onHasExactScoreChange: (enabled: boolean) => void;
@@ -70,6 +71,7 @@ export function MatchBetCard({
   awayGoals,
   bothTeamsScore,
   penaltyShootout,
+  allowsPenaltyShootout,
   conflictMessage,
   onSelectionChange,
   onHasExactScoreChange,
@@ -90,7 +92,10 @@ export function MatchBetCard({
         <div className="card-inner">
           <div className="section-title">Исход</div>
           <p className="mt-1 text-xs text-muted">
-            +1 очко. Победитель с учётом пенальти при ничье на табло.
+            +1 очко.
+            {allowsPenaltyShootout
+              ? " Победитель с учётом пенальти при ничье на табло."
+              : " Победитель матча."}
           </p>
           <div className="mt-3 flex flex-col gap-2">
             <button
@@ -120,13 +125,15 @@ export function MatchBetCard({
           onChange={onBothTeamsScoreChange}
         />
 
-        <YesNoButtons
-          label="Серия пенальти"
-          hint="+1 очко. Будет ли серия после ничьи на табло."
-          value={penaltyShootout}
-          locked={locked}
-          onChange={onPenaltyShootoutChange}
-        />
+        {allowsPenaltyShootout ? (
+          <YesNoButtons
+            label="Серия пенальти"
+            hint="+1 очко. Будет ли серия после ничьи на табло."
+            value={penaltyShootout}
+            locked={locked}
+            onChange={onPenaltyShootoutChange}
+          />
+        ) : null}
       </div>
 
       <div className="card-inner">

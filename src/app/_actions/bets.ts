@@ -4,7 +4,10 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireSessionTeam } from "@/lib/auth/session";
-import { MIN_BETTABLE_STAGE_RANK } from "@/lib/betting/stages";
+import {
+  allowsPenaltyShootoutBet,
+  MIN_BETTABLE_STAGE_RANK,
+} from "@/lib/betting/stages";
 import { isBettingOpen } from "@/lib/betting/matchStatus";
 import { getMatchBetConflictMessage } from "@/lib/betting/betValidation";
 import type { YesNoSelection } from "@/lib/betting/matchProps";
@@ -17,6 +20,7 @@ type BulkBetPayload = {
   awayGoals: number;
   bothTeamsScore: YesNoSelection | null;
   penaltyShootout: YesNoSelection | null;
+  allowsPenaltyShootout: boolean;
 };
 
 function parseYesNo(v: unknown): YesNoSelection | null {
@@ -43,7 +47,30 @@ function normalizeBulkBet(raw: BulkBetPayload): BulkBetPayload {
         : 0,
     bothTeamsScore: parseYesNo(raw.bothTeamsScore),
     penaltyShootout: parseYesNo(raw.penaltyShootout),
+    allowsPenaltyShootout: raw.allowsPenaltyShootout === true,
   };
+}
+
+async function deletePenaltyShootoutBet(teamId: string, matchId: string) {
+  const { data: existing } = await supabaseAdmin
+    .from("bets_penalty_shootout")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("match_id", matchId)
+    .maybeSingle();
+
+  if (!existing) return;
+
+  await supabaseAdmin
+    .from("team_points_ledger")
+    .delete()
+    .eq("bet_type", "match_penalty_shootout")
+    .eq("bet_id", existing.id);
+
+  await supabaseAdmin
+    .from("bets_penalty_shootout")
+    .delete()
+    .eq("id", existing.id);
 }
 
 async function upsertYesNoBets(
@@ -127,9 +154,13 @@ export async function setMatchBetsAction(formData: FormData) {
 
   const { data: matchRow } = await supabaseAdmin
     .from("matches")
-    .select("home_team_name,away_team_name")
+    .select("home_team_name,away_team_name,stage_rank")
     .eq("id", matchId)
     .maybeSingle();
+
+  const allowsPenalty = matchRow
+    ? allowsPenaltyShootoutBet(matchRow)
+    : false;
 
   const conflict = getMatchBetConflictMessage({
     selection,
@@ -138,6 +169,7 @@ export async function setMatchBetsAction(formData: FormData) {
     awayGoals,
     bothTeamsScore: null,
     penaltyShootout: null,
+    allowsPenaltyShootout: allowsPenalty,
     homeTeamName: matchRow?.home_team_name ?? "Команда 1",
     awayTeamName: matchRow?.away_team_name ?? "Команда 2",
   });
@@ -213,12 +245,15 @@ export async function setAllMatchBetsAction(formData: FormData) {
 
     const { data: matchRow } = await supabaseAdmin
       .from("matches")
-      .select("home_team_name,away_team_name")
+      .select("home_team_name,away_team_name,stage_rank")
       .eq("id", bet.matchId)
       .maybeSingle();
 
     const homeName = matchRow?.home_team_name ?? "Команда 1";
     const awayName = matchRow?.away_team_name ?? "Команда 2";
+    const allowsPenalty = matchRow
+      ? allowsPenaltyShootoutBet(matchRow)
+      : bet.allowsPenaltyShootout;
 
     const conflict = getMatchBetConflictMessage({
       selection: bet.selection,
@@ -226,7 +261,8 @@ export async function setAllMatchBetsAction(formData: FormData) {
       homeGoals: bet.homeGoals,
       awayGoals: bet.awayGoals,
       bothTeamsScore: parseYesNo(bet.bothTeamsScore),
-      penaltyShootout: parseYesNo(bet.penaltyShootout),
+      penaltyShootout: allowsPenalty ? parseYesNo(bet.penaltyShootout) : null,
+      allowsPenaltyShootout: allowsPenalty,
       homeTeamName: homeName,
       awayTeamName: awayName,
     });
@@ -283,14 +319,28 @@ export async function setAllMatchBetsAction(formData: FormData) {
       }
     }
 
+    const { data: matchMeta } = await supabaseAdmin
+      .from("matches")
+      .select("stage_rank")
+      .eq("id", bet.matchId)
+      .maybeSingle();
+
+    const allowsPenalty = matchMeta
+      ? allowsPenaltyShootoutBet(matchMeta)
+      : bet.allowsPenaltyShootout;
+
     const propError = await upsertYesNoBets(
       team.teamId,
       bet.matchId,
       bet.bothTeamsScore,
-      bet.penaltyShootout
+      allowsPenalty ? bet.penaltyShootout : null
     );
     if (propError) {
       redirect(`/matches?error=${encodeURIComponent(propError.message)}`);
+    }
+
+    if (!allowsPenalty) {
+      await deletePenaltyShootoutBet(team.teamId, bet.matchId);
     }
 
     const { error: outcomeError } = await supabaseAdmin

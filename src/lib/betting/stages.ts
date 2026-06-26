@@ -31,3 +31,8 @@ export function isBettableMatch(match: {
   }
   return true;
 }
+
+/** Серия пенальти возможна только в плей-офф (не в групповом этапе). */
+export function allowsPenaltyShootoutBet(match: { stage_rank: number }) {
+  return match.stage_rank > STAGE_RANK.GROUP;
+}
