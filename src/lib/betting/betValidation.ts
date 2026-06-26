@@ -38,6 +38,7 @@ export function getMatchBetConflictMessages(args: {
   awayGoals: number;
   bothTeamsScore: YesNoSelection | null;
   penaltyShootout: YesNoSelection | null;
+  allowsPenaltyShootout: boolean;
   homeTeamName: string;
   awayTeamName: string;
 }): string[] {
@@ -48,6 +49,7 @@ export function getMatchBetConflictMessages(args: {
     awayGoals,
     bothTeamsScore,
     penaltyShootout,
+    allowsPenaltyShootout,
     homeTeamName,
     awayTeamName,
   } = args;
@@ -83,7 +85,7 @@ export function getMatchBetConflictMessages(args: {
     }
   }
 
-  if (penaltyShootout === "yes") {
+  if (allowsPenaltyShootout && penaltyShootout === "yes") {
     if (homeGoals !== awayGoals) {
       messages.push(
         "Ставка «серия пенальти: да» требует равный точный счёт на табло"
@@ -91,7 +93,7 @@ export function getMatchBetConflictMessages(args: {
     }
   }
 
-  if (penaltyShootout === "no") {
+  if (allowsPenaltyShootout && penaltyShootout === "no") {
     if (homeGoals === awayGoals) {
       messages.push(
         "Ставка «серия пенальти: нет» требует разный точный счёт на табло"

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requireSessionTeam } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getActiveTournament } from "@/lib/db/tournament";
-import { isBettableMatch, MIN_BETTABLE_STAGE_RANK } from "@/lib/betting/stages";
+import { isBettableMatch, allowsPenaltyShootoutBet, MIN_BETTABLE_STAGE_RANK } from "@/lib/betting/stages";
 import { groupMatchesForDisplay } from "@/lib/betting/groupMatches";
 import {
   getMatchDisplayStatus,
@@ -111,6 +111,7 @@ export default async function MatchesPage({
     const awayLabel = displayTeamName(m.away_team_name, "away", translations);
     const displayStatus = getMatchDisplayStatus(m);
     const score = scoreByMatch.get(m.id);
+    const allowsPenalty = allowsPenaltyShootoutBet(m);
 
     matchesById[m.id] = {
       id: m.id,
@@ -127,7 +128,10 @@ export default async function MatchesPage({
       initialHomeGoals: score?.home_goals ?? 0,
       initialAwayGoals: score?.away_goals ?? 0,
       initialBothTeamsScore: bttsByMatch.get(m.id) ?? null,
-      initialPenaltyShootout: shootoutByMatch.get(m.id) ?? null,
+      initialPenaltyShootout: allowsPenalty
+        ? (shootoutByMatch.get(m.id) ?? null)
+        : null,
+      allowsPenaltyShootout: allowsPenalty,
     };
   }
 

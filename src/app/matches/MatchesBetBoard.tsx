@@ -24,6 +24,7 @@ export type MatchBetItem = {
   initialAwayGoals: number;
   initialBothTeamsScore: YesNoSelection | null;
   initialPenaltyShootout: YesNoSelection | null;
+  allowsPenaltyShootout: boolean;
 };
 
 export type MatchesDisplayGroup =
@@ -69,21 +70,22 @@ function stageBetsComplete(
   return matchIds.every((id) => id in saved);
 }
 
-function betIsDirty(bet: BetState) {
+function betIsDirty(bet: BetState, allowsPenaltyShootout: boolean) {
   return (
     bet.selection !== bet.initialSelection ||
     bet.hasExactScore !== bet.initialHasExactScore ||
     bet.homeGoals !== bet.initialHomeGoals ||
     bet.awayGoals !== bet.initialAwayGoals ||
     bet.bothTeamsScore !== bet.initialBothTeamsScore ||
-    bet.penaltyShootout !== bet.initialPenaltyShootout
+    (allowsPenaltyShootout &&
+      bet.penaltyShootout !== bet.initialPenaltyShootout)
   );
 }
 
-function betIsSaveable(bet: BetState) {
+function betIsSaveable(bet: BetState, match: MatchBetItem | undefined) {
   return (
     !bet.locked &&
-    betIsDirty(bet) &&
+    betIsDirty(bet, match?.allowsPenaltyShootout ?? false) &&
     (bet.selection === "home" || bet.selection === "away")
   );
 }
@@ -93,13 +95,15 @@ function conflictForBet(
   match: MatchBetItem | undefined
 ): string | null {
   if (bet.locked || !match) return null;
+  const allowsPenaltyShootout = match.allowsPenaltyShootout;
   return getMatchBetConflictMessage({
     selection: bet.selection,
     hasExactScore: bet.hasExactScore,
     homeGoals: bet.homeGoals,
     awayGoals: bet.awayGoals,
     bothTeamsScore: bet.bothTeamsScore,
-    penaltyShootout: bet.penaltyShootout,
+    penaltyShootout: allowsPenaltyShootout ? bet.penaltyShootout : null,
+    allowsPenaltyShootout,
     homeTeamName: match.homeLabel,
     awayTeamName: match.awayLabel,
   });
@@ -120,14 +124,18 @@ export function MatchesBetBoard({
         awayGoals: match.initialAwayGoals,
         hasExactScore: match.initialHasExactScore,
         bothTeamsScore: match.initialBothTeamsScore,
-        penaltyShootout: match.initialPenaltyShootout,
+        penaltyShootout: match.allowsPenaltyShootout
+          ? match.initialPenaltyShootout
+          : null,
         locked: match.locked,
         initialSelection: match.initialSelection,
         initialHomeGoals: match.initialHomeGoals,
         initialAwayGoals: match.initialAwayGoals,
         initialHasExactScore: match.initialHasExactScore,
         initialBothTeamsScore: match.initialBothTeamsScore,
-        initialPenaltyShootout: match.initialPenaltyShootout,
+        initialPenaltyShootout: match.allowsPenaltyShootout
+          ? match.initialPenaltyShootout
+          : null,
       });
     }
     return initial;
@@ -144,8 +152,10 @@ export function MatchesBetBoard({
 
   const pendingBets = useMemo(
     () =>
-      [...bets.entries()].filter(([, bet]) => betIsSaveable(bet)),
-    [bets]
+      [...bets.entries()].filter(([matchId, bet]) =>
+        betIsSaveable(bet, matchesById[matchId])
+      ),
+    [bets, matchesById]
   );
 
   const canSave = useMemo(() => {
@@ -168,15 +178,20 @@ export function MatchesBetBoard({
   function handleSave() {
     if (!canSave || isPending) return;
 
-    const payload = pendingBets.map(([matchId, bet]) => ({
-      matchId,
-      selection: bet.selection,
-      hasExactScore: bet.hasExactScore,
-      homeGoals: bet.homeGoals,
-      awayGoals: bet.awayGoals,
-      bothTeamsScore: bet.bothTeamsScore,
-      penaltyShootout: bet.penaltyShootout,
-    }));
+    const payload = pendingBets.map(([matchId, bet]) => {
+      const match = matchesById[matchId];
+      const allowsPenaltyShootout = match?.allowsPenaltyShootout ?? false;
+      return {
+        matchId,
+        selection: bet.selection,
+        hasExactScore: bet.hasExactScore,
+        homeGoals: bet.homeGoals,
+        awayGoals: bet.awayGoals,
+        bothTeamsScore: bet.bothTeamsScore,
+        penaltyShootout: allowsPenaltyShootout ? bet.penaltyShootout : null,
+        allowsPenaltyShootout,
+      };
+    });
 
     const formData = new FormData();
     formData.set("bets", JSON.stringify(payload));
@@ -232,6 +247,7 @@ export function MatchesBetBoard({
           awayGoals={bet.awayGoals}
           bothTeamsScore={bet.bothTeamsScore}
           penaltyShootout={bet.penaltyShootout}
+          allowsPenaltyShootout={match.allowsPenaltyShootout}
           conflictMessage={conflicts.get(matchId) ?? null}
           onSelectionChange={(selection) => updateBet(matchId, { selection })}
           onHasExactScoreChange={(hasExactScore) =>
